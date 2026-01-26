@@ -182,7 +182,7 @@ echo ""
 red_code=$(get_color_code "red")
 reset_code=$(get_reset_code)
 echo -e "${red_code}════════════════════════════════════════════════════${reset_code}"
-print_header "               WELCOME TO SSHPLUS MANAGER"
+print_header "             WELCOME TO SSHPLUS MANAGER             "
 echo -e "${red_code}════════════════════════════════════════════════════${reset_code}"
 echo ""
 color_echo_n "• " "red"

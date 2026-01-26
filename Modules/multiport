@@ -71,21 +71,31 @@ add_port_sshd() {
         return 0
     fi
     
-    # Add port before any Match blocks
+    # Add port before any Match blocks (insert only before the first Match)
     if grep -q "^Match" /etc/ssh/sshd_config 2>/dev/null; then
-        # Insert before first Match block
-        sed -i "/^Match/i\Port $port" /etc/ssh/sshd_config
+        # Find the first Match line and insert before it (only once)
+        local first_match_line=$(grep -n "^Match" /etc/ssh/sshd_config 2>/dev/null | head -1 | cut -d: -f1)
+        if [[ -n "$first_match_line" ]]; then
+            sed -i "${first_match_line}i\Port $port" /etc/ssh/sshd_config
+        else
+            # Fallback: add at the end
+            echo "Port $port" >> /etc/ssh/sshd_config
+        fi
     else
         # Add at the end
         echo "Port $port" >> /etc/ssh/sshd_config
     fi
     
     # Validate configuration immediately after adding
-    if ! sshd -t > /dev/null 2>&1; then
-        # Revert the change
-        sed -i "/^Port $port$/d" /etc/ssh/sshd_config
+    local validation_output=$(sshd -t 2>&1)
+    if [[ $? -ne 0 ]]; then
+        # Revert the change - be more specific with sed pattern
+        sed -i "/^[[:space:]]*Port[[:space:]]\+${port}[[:space:]]*$/d" /etc/ssh/sshd_config
         if [[ "$quiet" != "true" ]]; then
             error_msg "Invalid SSH configuration! Port $port not added."
+            echo "$validation_output" | head -3 | while read line; do
+                color_echo "  $line" "red"
+            done
         fi
         return 1
     fi
@@ -242,34 +252,16 @@ main_menu() {
                     continue
                 fi
                 
-                # Check if port is already in use by another service
-                if ss -ltnp 2>/dev/null | grep -q ":$port "; then
-                    if ! ss -ltnp 2>/dev/null | grep -q ":$port.*ssh"; then
-                        warning_msg "Port $port is already in use by another service!"
-                        color_echo_n "Continue anyway? [y/n]: " "yellow"
-                        read -r confirm
-                        if [[ ! "$confirm" =~ ^[yY]$ ]]; then
-                            continue
-                        fi
-                    fi
-                fi
-                
-                echo ""
-                color_echo "Adding port $port to SSH configuration..." "green"
-                echo ""
-                
                 if add_port_sshd "$port"; then
                     if check_systemd; then
                         configure_systemd_socket
                     else
-                        # Fallback: restart SSH service
                         if command -v systemctl > /dev/null 2>&1; then
                             systemctl restart ssh.service 2>/dev/null || systemctl restart sshd.service 2>/dev/null
                         else
                             service ssh restart 2>/dev/null || service sshd restart 2>/dev/null
                         fi
                     fi
-                    
                     configure_ufw
                     success_msg "Port $port added successfully!"
                 else
@@ -328,13 +320,54 @@ main_menu() {
                 clear
                 print_header "      QUICK MULTI-PORT SETUP       "
                 echo ""
-                color_echo "This will configure common ports:" "yellow"
-                color_echo "  22, 3398, 443, 80, 8080, 8443, 53, 993, 995" "white"
+                color_echo "Enter ports separated by comma:" "yellow"
+                color_echo "Example: 22, 3398, 443, 80, 8080" "white"
                 echo ""
-                color_echo_n "Continue? [y/n]: " "yellow"
-                read -r confirm
+                color_echo_n "Ports: " "green"
+                read -r ports_input
                 
-                if [[ ! "$confirm" =~ ^[yY]$ ]]; then
+                if [[ -z "$ports_input" ]]; then
+                    error_msg "No ports entered!"
+                    sleep 2
+                    continue
+                fi
+                
+                # Create backup of sshd_config before making changes
+                local backup_file="/etc/ssh/sshd_config.backup.$(date +%Y%m%d_%H%M%S)"
+                if cp /etc/ssh/sshd_config "$backup_file" 2>/dev/null; then
+                    info_msg "Backup created: $backup_file"
+                fi
+                
+                # Validate current config before making changes
+                local validation_error=$(sshd -t 2>&1)
+                if [[ $? -ne 0 ]]; then
+                    error_msg "Current SSH configuration has errors:"
+                    echo "$validation_error" | while read line; do
+                        color_echo "  $line" "red"
+                    done
+                    error_msg "Please fix existing configuration errors first!"
+                    sleep 3
+                    continue
+                fi
+                
+                # Parse comma-separated ports, trim spaces
+                local ports_list=""
+                IFS=',' read -ra port_array <<< "$ports_input"
+                for port in "${port_array[@]}"; do
+                    # Trim whitespace using sed
+                    port=$(echo "$port" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                    if [[ -n "$port" ]]; then
+                        if verif_ptrs "$port" 2>/dev/null; then
+                            ports_list="$ports_list $port"
+                        else
+                            warning_msg "Skipping invalid port: $port"
+                        fi
+                    fi
+                done
+                
+                if [[ -z "$ports_list" ]]; then
+                    error_msg "No valid ports to configure!"
+                    sleep 2
                     continue
                 fi
                 
@@ -342,18 +375,15 @@ main_menu() {
                 color_echo "Configuring multiple ports..." "green"
                 echo ""
                 
-                # Default ports
-                local default_ports="22 3398 443 80 8080 8443 53 993 995"
-                
                 # Get current ports before making changes
                 local current_ports=$(get_current_ports)
                 
-                # Add all default ports (skip if already exists)
+                # Add all ports (skip if already exists)
                 local added_count=0
                 local skipped_count=0
                 local failed_count=0
                 
-                for port in $default_ports; do
+                for port in $ports_list; do
                     # Check if port already exists in current configuration
                     if port_exists "$port"; then
                         ((skipped_count++))
@@ -370,12 +400,41 @@ main_menu() {
                     fi
                 done
                 
-                # Final validation
-                if ! sshd -t > /dev/null 2>&1; then
-                    error_msg "Configuration validation failed!"
-                    error_msg "Please check /etc/ssh/sshd_config manually"
-                    sleep 3
-                    continue
+                # Final validation (only if we made changes)
+                if [[ $added_count -gt 0 ]]; then
+                    validation_error=$(sshd -t 2>&1)
+                    if [[ $? -ne 0 ]]; then
+                        error_msg "Configuration validation failed after adding ports!"
+                        echo "$validation_error" | while read line; do
+                            color_echo "  $line" "red"
+                        done
+                        
+                        # Restore from backup
+                        if [[ -f "$backup_file" ]]; then
+                            warning_msg "Restoring original configuration from backup..."
+                            if cp "$backup_file" /etc/ssh/sshd_config 2>/dev/null; then
+                                info_msg "Configuration restored successfully"
+                            else
+                                error_msg "Failed to restore backup! Manual intervention required."
+                            fi
+                        else
+                            error_msg "No backup found! Please check /etc/ssh/sshd_config manually"
+                        fi
+                        sleep 3
+                        continue
+                    fi
+                elif [[ $skipped_count -gt 0 ]] && [[ $added_count -eq 0 ]]; then
+                    # All ports already exist, just validate current config
+                    validation_error=$(sshd -t 2>&1)
+                    if [[ $? -ne 0 ]]; then
+                        error_msg "Current SSH configuration has errors:"
+                        echo "$validation_error" | while read line; do
+                            color_echo "  $line" "red"
+                        done
+                        error_msg "Please fix configuration errors manually!"
+                        sleep 3
+                        continue
+                    fi
                 fi
                 
                 # Apply changes if any ports were added
