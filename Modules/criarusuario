@@ -3,7 +3,18 @@
 #	SCRIPT: SSHPLUS MANAGER CREATE USER ACCOUNT
 #	TRANSLATED BY:	JENBHIE
 #====================================================
+
+# Load color utility functions
+if [[ -f "/etc/SSHPlus/colors" ]]; then
+    source /etc/SSHPlus/colors
+elif [[ -f "/bin/colors" ]]; then
+    source /bin/colors
+elif [[ -f "$(dirname "$0")/colors" ]]; then
+    source "$(dirname "$0")/colors"
+fi
+
 IP=$(cat /etc/IP)
+# Old color variables - kept for backward compatibility but should use error_msg() instead
 cor1='\033[41;1;37m'
 cor2='\033[44;1;37m'
 scor='\033[0m'
@@ -86,114 +97,148 @@ fun_bar() {
         touch $HOME/fim
     ) >/dev/null 2>&1 &
     tput civis
-    echo -ne "\033[1;33mWAIT \033[1;37m- \033[1;33m["
+    # Use color functions for progress bar
+    yellow_code=$(get_color_code "yellow")
+    red_code=$(get_color_code "red")
+    white_code=$(get_color_code "white")
+    green_code=$(get_color_code "green")
+    reset_code=$(get_reset_code)
+    echo -ne "${yellow_code}WAIT ${white_code}- ${yellow_code}["
     while true; do
         for ((i = 0; i < 18; i++)); do
-            echo -ne "\033[1;31m#"
+            echo -ne "${red_code}#"
             sleep 0.1s
         done
         [[ -e $HOME/fim ]] && rm $HOME/fim && break
-        echo -e "\033[1;33m]"
+        echo -e "${yellow_code}]"
         sleep 1s
         tput cuu1
         tput dl1
-        echo -ne "\033[1;33mWAIT \033[1;37m- \033[1;33m["
+        echo -ne "${yellow_code}WAIT ${white_code}- ${yellow_code}["
     done
-    echo -e "\033[1;33m]\033[1;37m -\033[1;32m OK !\033[1;37m"
+    echo -e "${yellow_code}]${white_code} -${green_code} OK !${white_code}${reset_code}"
     tput cnorm
 }
 fun_edithost() {
     clear
-    echo -e "\E[44;1;37m          CHANGE OVPN HOST            \E[0m"
+    # Use print_header function for colored header
+    print_header "          CHANGE OVPN HOST            "
     echo ""
-    echo -e "\033[1;33mHOST IN USE\033[1;37m: \033[1;32m$Host"
+    # Use color functions for host display
+    color_echo_n "HOST IN USE" "yellow"
+    color_echo_n ": " "white"
+    color_echo "$Host" "green"
     echo ""
-    echo -e "\033[1;31m[\033[1;36m1\033[1;31m] \033[1;33mLIVE RECHARGE"
-    echo -e "\033[1;31m[\033[1;36m2\033[1;31m] \033[1;33mLIVE NAVIGATOR"
-    echo -e "\033[1;31m[\033[1;36m3\033[1;31m] \033[1;33mOPEN SOCKS \033[1;31m[\033[1;32mAPP MOD\033[1;31m]"
-    echo -e "\033[1;31m[\033[1;36m4\033[1;31m] \033[1;33mOPEN SQUID \033[1;31m[\033[1;32mAPP MOD\033[1;31m]"
-    echo -e "\033[1;31m[\033[1;36m5\033[1;31m] \033[1;33mVIVO MMS \033[1;31m[\033[1;37mAPN: \033[1;32mmms.vivo.com.br\033[1;31m]"
-    echo -e "\033[1;31m[\033[1;36m6\033[1;31m] \033[1;33mBYPASS MODE \033[1;31m[\033[1;32mOPEN + INJECTOR\033[1;31m]"
-    echo -e "\033[1;31m[\033[1;36m7\033[1;31m] \033[1;33mALL HOSTS \033[1;31m[\033[1;32m1 OF EACH OVPN\033[1;31m]"
-    echo -e "\033[1;31m[\033[1;36m8\033[1;31m] \033[1;33mEDIT MANUALLY"
-    echo -e "\033[1;31m[\033[1;36m0\033[1;31m] \033[1;33mBACK"
+    # Use menu_option function for menu items
+    menu_option "1" "LIVE RECHARGE" "red" "yellow"
+    menu_option "2" "LIVE NAVIGATOR" "red" "yellow"
+    menu_option "3" "OPEN SOCKS [APP MOD]" "red" "yellow"
+    menu_option "4" "OPEN SQUID [APP MOD]" "red" "yellow"
+    menu_option "5" "VIVO MMS [APN: mms.vivo.com.br]" "red" "yellow"
+    menu_option "6" "BYPASS MODE [OPEN + INJECTOR]" "red" "yellow"
+    menu_option "7" "ALL HOSTS [1 OF EACH OVPN]" "red" "yellow"
+    menu_option "8" "EDIT MANUALLY" "red" "yellow"
+    menu_option "0" "BACK" "red" "yellow"
     echo ""
-    echo -ne "\033[1;32mWHICH HOST YOU WANT TO USE \033[1;33m?\033[1;37m "
+    color_echo_n "WHICH HOST YOU WANT TO USE " "green"
+    color_echo_n "?" "yellow"
+    color_echo_n " " "white"
     read respo
     [[ -z "$respo" ]] && {
-        echo -e "\n\033[1;31mInvalid option!"
+        echo ""
+        error_msg "Invalid option!"
         sleep 2
         fun_edithost
     }
     if [[ "$respo" = '1' ]]; then
-        echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
+        echo ""
+        color_echo "CHANGING HOST!" "green"
+        echo ""
         fun_althost() {
             sed -i "s;$rmt;remote $rmt2 $_Port;" $cert01
             sed -i "s;$hedr;http-proxy-option CUSTOM-HEADER Host $vivo1;" $cert01
             sed -i "s;$prxy;http-proxy $IP 80;" $cert01
         }
         fun_bar 'fun_althost'
-        echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
+        echo ""
+        success_msg "HOST CHANGED SUCCESSFULLY!"
         fun_geraovpn
         sleep 1.5
     elif [[ "$respo" = '2' ]]; then
-        echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
+        echo ""
+        color_echo "CHANGING HOST!" "green"
+        echo ""
         fun_althost2() {
             sed -i "s;$rmt;remote $rmt2 $_Port;" $cert01
             sed -i "s;$hedr;http-proxy-option CUSTOM-HEADER Host $vivo3;" $cert01
             sed -i "s;$prxy;http-proxy $IP 80;" $cert01
         }
         fun_bar 'fun_althost2'
-        echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
+        echo ""
+        success_msg "HOST CHANGED SUCCESSFULLY!"
         fun_geraovpn
         sleep 1.5
     elif [[ "$respo" = '3' ]]; then
-        echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
+        echo ""
+        color_echo "CHANGING HOST!" "green"
+        echo ""
         fun_althostpay1() {
             sed -i "s;$rmt;remote $rmt2 $_Port;" $cert01
             sed -i "s;$hedr;$payload1;" $cert01
             sed -i "s;$prxy;http-proxy $IP 8080;" $cert01
         }
         fun_bar 'fun_althostpay1'
-        echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
+        echo ""
+        success_msg "HOST CHANGED SUCCESSFULLY!"
         fun_geraovpn
         sleep 1.5
     elif [[ "$respo" = '4' ]]; then
-        echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
+        echo ""
+        color_echo "CHANGING HOST!" "green"
+        echo ""
         fun_althostpay2() {
             sed -i "s;$rmt;remote $rmt2 $_Port;" $cert01
             sed -i "s;$hedr;$payload2;" $cert01
             sed -i "s;$prxy;http-proxy $IP 80;" $cert01
         }
         fun_bar 'fun_althostpay2'
-        echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
+        echo ""
+        success_msg "HOST CHANGED SUCCESSFULLY!"
         fun_geraovpn
         sleep 1.5
     elif [[ "$respo" = '5' ]]; then
-        echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
+        echo ""
+        color_echo "CHANGING HOST!" "green"
+        echo ""
         fun_althost5() {
             sed -i "s;$rmt;remote $rmt3;" $cert01
             sed -i "s;$hedr;http-proxy-option CUSTOM-HEADER Host $IP:$_Port;" $cert01
             sed -i "s;$prxy;http-proxy $prx 80;" $cert01
         }
         fun_bar 'fun_althost5'
-        echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
+        echo ""
+        success_msg "HOST CHANGED SUCCESSFULLY!"
         fun_geraovpn
         sleep 1.5
     elif [[ "$respo" = '6' ]]; then
-        echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
+        echo ""
+        color_echo "CHANGING HOST!" "green"
+        echo ""
         fun_althost6() {
             sed -i "s;$rmt;remote $IP $_Port;" $cert01
             sed -i "s;$hedr;route $IP 255.255.255.255 net_gateway;" $cert01
             sed -i "s;$prxy;http-proxy 127.0.0.1 8989;" $cert01
         }
         fun_bar 'fun_althost6'
-        echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
+        echo ""
+        success_msg "HOST CHANGED SUCCESSFULLY!"
         fun_geraovpn
         sleep 1.5
     elif [[ "$respo" = '7' ]]; then
         [[ ! -e "$HOME/$username.ovpn" ]] && fun_geraovpn
-        echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
+        echo ""
+        color_echo "CHANGING HOST!" "green"
+        echo ""
         fun_packhost() {
             [[ ! -d "$HOME/OVPN" ]] && mkdir $HOME/OVPN
             sed -i "7,9"d $HOME/$username.ovpn
@@ -224,29 +269,31 @@ fun_edithost() {
             cd $HOME && rm -rf /root/OVPN >/dev/null 2>&1
         }
         fun_bar 'fun_packhost'
-        echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
+        echo ""
+        success_msg "HOST CHANGED SUCCESSFULLY!"
         sleep 1.5
     elif [[ "$respo" = '8' ]]; then
         echo ""
-        echo -e "\033[1;32mCHANGING OVPN FILE!\033[0m"
+        color_echo "CHANGING OVPN FILE!" "green"
         echo ""
-        echo -e "\033[1;31mATTENTION!\033[0m"
+        error_msg "ATTENTION!"
         echo ""
-        echo -e "\033[1;33mTO SAVE USE THE KEYS \033[1;32mctrl x y\033[0m"
+        color_echo_n "TO SAVE USE THE KEYS " "yellow"
+        color_echo "ctrl x y" "green"
         sleep 4
         clear
         nano /etc/openvpn/client-common.txt
         echo ""
-        echo -e "\033[1;32mCHANGED SUCCESSFULLY!\033[0m"
+        success_msg "CHANGED SUCCESSFULLY!"
         fun_geraovpn
         sleep 1.5
     elif [[ "$respo" = '0' ]]; then
         echo ""
-        echo -e "\033[1;31mReturning...\033[0m"
+        error_msg "Returning..."
         sleep 2
     else
         echo ""
-        echo -e "\033[1;31mInvalid option !\033[0m"
+        error_msg "Invalid option !"
         sleep 2
         fun_edithost
     fi
@@ -254,66 +301,96 @@ fun_edithost() {
 [[ ! -e /usr/lib/sshplus ]] && exit 0
 tput setaf 7;tput setab 4;tput bold;printf '%30s%s%-15s\n' "Create SSH User";tput sgr0
 echo ""
-echo -ne "\033[1;32mUsername:\033[1;37m ";read username
+color_echo_n "Username: " "green"
+read -r username
 [[ -z $username ]] && {
-	echo -e "\n${cor1}Empty or invalid username!${scor}\n"
+	echo ""
+	error_msg "Empty or invalid username!"
+	echo ""
 	exit 1
 }
 [[ "$(grep -wc $username /etc/passwd)" != '0' ]] && {
-	echo -e "\n${cor1}This user already exists. try another name!${scor}\n"
+	echo ""
+	error_msg "This user already exists. try another name!"
+	echo ""
 	exit 1
 }
 [[ ${username} != ?(+|-)+([a-zA-Z0-9]) ]] && {
-	echo -e "\n${cor1}You entered an invalid username!${scor}"
-	echo -e "${cor1}Do not use spaces, accents or special characters!${scor}\n"
+	echo ""
+	error_msg "You entered an invalid username!"
+	error_msg "Do not use spaces, accents or special characters!"
+	echo ""
 	exit 1
 }
 sizemin=$(echo ${#username})
 [[ $sizemin -lt 2 ]] && {
-	echo -e "\n${cor1}You entered a very short username${scor}"
-	echo -e "${cor1}use at least two characters!${scor}\n"
+	echo ""
+	error_msg "You entered a very short username"
+	error_msg "use at least two characters!"
+	echo ""
 	exit 1
 }
 sizemax=$(echo ${#username})
 [[ $sizemax -gt 10 ]] && {
-	echo -e "\n${cor1}You entered a very long username"
-	echo -e "${cor1}use a maximum of 10 characters!${scor}\n"
+	echo ""
+	error_msg "You entered a very long username"
+	error_msg "use a maximum of 10 characters!"
+	echo ""
 	exit 1
 }
-echo -ne "\033[1;32mPassword:\033[1;37m ";read password
+color_echo_n "Password: " "green"
+read -r password
 [[ -z $password ]] && {
-	echo -e "\n${cor1}Password empty or invalid!${scor}\n"
+	echo ""
+	error_msg "Password empty or invalid!"
+	echo ""
 	exit 1
 }
 sizepass=$(echo ${#password})
 [[ $sizepass -lt 4 ]] && {
-	echo -e "\n${cor1}Short password !, use at least 4 characters${scor}\n"
+	echo ""
+	error_msg "Short password !, use at least 4 characters"
+	echo ""
 	exit 1
 }
-echo -ne "\033[1;32mDays to expire:\033[1;37m ";read dias
+color_echo_n "Days to expire: " "green"
+read -r dias
 [[ -z $dias ]] && {
-	echo -e "\n${cor1}No number of days!${scor}\n"
+	echo ""
+	error_msg "No number of days!"
+	echo ""
 	exit 1
 }
 [[ ${dias} != ?(+|-)+([0-9]) ]] && {
-	echo -e "\n${cor1}You entered an invalid number of days!${scor}\n"
+	echo ""
+	error_msg "You entered an invalid number of days!"
+	echo ""
 	exit 1
 }
 [[ $dias -lt 1 ]] && {
-	echo -e "\n${cor1}The number must be greater than zero!${scor}\n"
+	echo ""
+	error_msg "The number must be greater than zero!"
+	echo ""
 	exit 1
 }
-echo -ne "\033[1;32mConnection limit:\033[1;37m ";read sshlimiter
+color_echo_n "Connection limit: " "green"
+read -r sshlimiter
 [[ -z $sshlimiter ]] && {
-	echo -e "\n${cor1}You left the connection limit empty!${scor}\n"
+	echo ""
+	error_msg "You left the connection limit empty!"
+	echo ""
 	exit 1
 }
 [[ ${sshlimiter} != ?(+|-)+([0-9]) ]] && {
-	echo -e "\n${cor1}You entered an invalid number of connection!${scor}\n"
+	echo ""
+	error_msg "You entered an invalid number of connection!"
+	echo ""
 	exit 1
 }
 [[ $sshlimiter -lt 1 ]] && {
-	echo -e "\n${cor1}Number of simultaneous connections must be greater than zero!${scor}\n"
+	echo ""
+	error_msg "Number of simultaneous connections must be greater than zero!"
+	echo ""
 	exit 1
 }
 final=$(date "+%Y-%m-%d" -d "+$dias days")
@@ -323,12 +400,26 @@ useradd -e $final -M -s /bin/false -p $pass $username >/dev/null 2>&1 &
 echo "$password" >/etc/SSHPlus/senha/$username
 echo "$username $sshlimiter" >>/root/users.db
 [[ -e /etc/openvpn/server.conf ]] && {
-	echo -ne "\033[1;32mGenerate Ovpn File \033[1;31m? \033[1;33m[y/n]:\033[1;37m "; read resp
+	color_echo_n "Generate Ovpn File " "green"
+	color_echo_n "? " "red"
+	color_echo_n "[y/n]: " "yellow"
+	read -r resp
 	[[ "$resp" = @(y|Y) ]] && {
 		rm $username.zip $username.ovpn >/dev/null 2>&1
-		echo -ne "\033[1;32mGenerate with username and password \033[1;31m? \033[1;33m[y/n]:\033[1;37m "
+		color_echo_n "Generate with username and password " "green"
+		color_echo_n "? " "red"
+		color_echo_n "[y/n]: " "yellow"
 		read respost
-		echo -ne "\033[1;32mCurrent Host\033[1;37m: \033[1;31m(\033[1;37m$Host\033[1;31m) \033[1;37m- \033[1;32mChange \033[1;31m? \033[1;33m[y/n]:\033[1;37m "; read oprc
+		color_echo_n "Current Host" "green"
+		color_echo_n ": " "white"
+		color_echo_n "(" "red"
+		color_echo_n "$Host" "white"
+		color_echo_n ") " "red"
+		color_echo_n "- " "white"
+		color_echo_n "Change " "green"
+		color_echo_n "? " "red"
+		color_echo_n "[y/n]: " "yellow"
+		read -r oprc
 		[[ "$oprc" = @(y|Y) ]] && {
 			fun_edithost
 		} || {
@@ -341,12 +432,19 @@ echo "$username $sshlimiter" >>/root/users.db
 			}
 		}
 		clear
-		echo -e "\E[44;1;37m       SSH ACCOUNT CREATED !      \E[0m"
-		echo -e "\n\033[1;32mIP: \033[1;37m$IP"
-		echo -e "\033[1;32mUser: \033[1;37m$username"
-		echo -e "\033[1;32mPassword: \033[1;37m$password"
-		echo -e "\033[1;32mExpires in: \033[1;37m$gui"
-		echo -e "\033[1;32mConnection limit: \033[1;37m$sshlimiter"
+		print_header "       SSH ACCOUNT CREATED !      "
+		# Use color functions for account info display
+		echo ""
+		color_echo_n "IP: " "green"
+		color_echo "$IP" "white"
+		color_echo_n "User: " "green"
+		color_echo "$username" "white"
+		color_echo_n "Password: " "green"
+		color_echo "$password" "white"
+		color_echo_n "Expires in: " "green"
+		color_echo "$gui" "white"
+		color_echo_n "Connection limit: " "green"
+		color_echo "$sshlimiter" "white"
 		sleep 1
 		function aguarde() {
 			helice() {
@@ -361,7 +459,10 @@ echo "$username $sshlimiter" >>/root/users.db
 				tput cnorm
 			}
 			echo ""
-			echo -ne "\033[1;31mCREATING OVPN\033[1;33m.\033[1;31m. \033[1;32m"
+			color_echo_n "CREATING OVPN" "red"
+			color_echo_n "." "yellow"
+			color_echo_n ". " "red"
+			color_echo_n "" "green"
 			helice
 			echo -e "\e[1DOK"
 		}
@@ -371,29 +472,46 @@ echo "$username $sshlimiter" >>/root/users.db
 		[[ -d /var/www/html/openvpn ]] && {
 			mv $HOME/$username.zip /var/www/html/openvpn/$username.zip >/dev/null 2>&1
 			[[ "$VERSION_ID" = 'VERSION_ID="14.04"' ]] && {
-				echo -e "\033[1;32mLINK\033[1;37m: \033[1;36m$IP:81/html/openvpn/$username.zip"
+				color_echo_n "LINK: " "green"
+			color_echo "$IP:81/html/openvpn/$username.zip" "cyan"
 			} || {
-				echo -e "\033[1;32mLINK\033[1;37m: \033[1;36m$IP:81/openvpn/$username.zip"
+				color_echo_n "LINK: " "green"
+				color_echo "$IP:81/openvpn/$username.zip" "cyan"
 			}
 		} || {
-			echo -e "\033[1;32mAvailable in\033[1;31m" ~/"$username.zip\033[0m"
+			color_echo_n "Available in" "green"
+			color_echo " ~/$username.zip" "red"
 			sleep 1
 		}
 	} || {
 		clear
-		echo -e "\E[44;1;37m       SSH ACCOUNT CREATED !      \E[0m"
-		echo -e "\n\033[1;32mIP: \033[1;37m$IP"
-		echo -e "\033[1;32mUser: \033[1;37m$username"
-		echo -e "\033[1;32mPassword: \033[1;37m$password"
-		echo -e "\033[1;32mExpires in: \033[1;37m$gui"
-		echo -e "\033[1;32mConnection limit: \033[1;37m$sshlimiter"
+		print_header "       SSH ACCOUNT CREATED !      "
+		# Use color functions for account info display
+		echo ""
+		color_echo_n "IP: " "green"
+		color_echo "$IP" "white"
+		color_echo_n "User: " "green"
+		color_echo "$username" "white"
+		color_echo_n "Password: " "green"
+		color_echo "$password" "white"
+		color_echo_n "Expires in: " "green"
+		color_echo "$gui" "white"
+		color_echo_n "Connection limit: " "green"
+		color_echo "$sshlimiter" "white"
 	}
 } || {
 	clear
-	echo -e "\E[44;1;37m       SSH ACCOUNT CREATED !      \E[0m"
-	echo -e "\n\033[1;32mIP: \033[1;37m$IP"
-	echo -e "\033[1;32mUser: \033[1;37m$username"
-	echo -e "\033[1;32mPassword: \033[1;37m$password"
-	echo -e "\033[1;32mExpires in: \033[1;37m$gui"
-	echo -e "\033[1;32mConnection limit: \033[1;37m$sshlimiter"
+	print_header "       SSH ACCOUNT CREATED !      "
+	# Use color functions for account info display
+	echo ""
+	color_echo_n "IP: " "green"
+	color_echo "$IP" "white"
+	color_echo_n "User: " "green"
+	color_echo "$username" "white"
+	color_echo_n "Password: " "green"
+	color_echo "$password" "white"
+	color_echo_n "Expires in: " "green"
+	color_echo "$gui" "white"
+	color_echo_n "Connection limit: " "green"
+	color_echo "$sshlimiter" "white"
 }

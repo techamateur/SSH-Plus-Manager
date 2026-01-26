@@ -1,6 +1,17 @@
 #!/bin/bash
+
+# Load color utility functions
+if [[ -f "/etc/SSHPlus/colors" ]]; then
+    source /etc/SSHPlus/colors
+elif [[ -f "/bin/colors" ]]; then
+    source /bin/colors
+elif [[ -f "$(dirname "$0")/colors" ]]; then
+    source "$(dirname "$0")/colors"
+fi
+
 clear
-echo -e "\E[44;1;37m User                 Password               Limit         Validity \E[0m"
+# Use print_header function for colored header
+print_header " User                 Password               Limit         Validity "
 echo ""
 [[ ! -e /bin/version ]] && rm -rf /bin/menu
 for users in `awk -F : '$3 > 900 { print $1 }' /etc/passwd |sort |grep -v "nobody" |grep -vi polkitd |grep -vi system-`
@@ -18,24 +29,39 @@ fi
 datauser=$(chage -l $users |grep -i co |awk -F : '{print $2}')
 if [ $datauser = never ] 2> /dev/null
 then
-data="\033[1;33mNever\033[0m"
+    # Use color function for "Never"
+    yellow_code=$(get_color_code "yellow")
+    reset_code=$(get_reset_code)
+    data="${yellow_code}Never${reset_code}"
 else
     databr="$(date -d "$datauser" +"%Y%m%d")"
     hoje="$(date -d today +"%Y%m%d")"
     if [ $hoje -ge $databr ]
     then
-    data="\033[1;31mEXPIRED\033[0m"
+        # Use color function for "EXPIRED"
+        red_code=$(get_color_code "red")
+        reset_code=$(get_reset_code)
+        data="${red_code}EXPIRED${reset_code}"
     else
-    dat="$(date -d"$datauser" '+%Y-%m-%d')"
-    data=$(echo -e "$((($(date -ud $dat +%s)-$(date -ud $(date +%Y-%m-%d) +%s))/86400)) \033[1;37mDays\033[0m")
+        dat="$(date -d"$datauser" '+%Y-%m-%d')"
+        days=$((($(date -ud $dat +%s)-$(date -ud $(date +%Y-%m-%d) +%s))/86400))
+        white_code=$(get_color_code "white")
+        reset_code=$(get_reset_code)
+        data="${days} ${white_code}Days${reset_code}"
     fi
 fi
 Usuario=$(printf ' %-15s' "$users")
 Senha=$(printf '%-13s' "$senha")
 Limite=$(printf '%-10s' "$lim")
 Data=$(printf '%-1s' "$data")
-echo -e "\033[1;33m$Usuario      \033[1;37m$Senha            \033[1;37m$Limite   \033[1;32m$Data\033[0m"
-echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+# Use color codes for output
+yellow_code=$(get_color_code "yellow")
+white_code=$(get_color_code "white")
+green_code=$(get_color_code "green")
+blue_code=$(get_color_code "blue")
+reset_code=$(get_reset_code)
+echo -e "${yellow_code}$Usuario      ${white_code}$Senha            ${white_code}$Limite   ${green_code}$Data${reset_code}"
+echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
 done
 echo ""
 _tuser=$(awk -F: '$3>=1000 {print $1}' /etc/passwd | grep -v nobody | wc -l)
@@ -44,4 +70,11 @@ _ons=$(ps -x | grep sshd | grep -v root | grep priv | wc -l)
 [[ -e /etc/openvpn/openvpn-status.log ]] && _onop=$(grep -c "10.8.0" /etc/openvpn/openvpn-status.log) || _onop="0"
 [[ -e /etc/default/dropbear ]] && _drp=$(ps aux | grep dropbear | grep -v grep | wc -l) _ondrp=$(($_drp - 1)) || _ondrp="0"
 _onli=$(($_ons + $_onop + $_ondrp))
-echo -e "\033[1;33m• \033[1;36mTOTAL USERS\033[1;37m $_tuser \033[1;33m• \033[1;32mONLINE USERS\033[1;37m: $_onli \033[1;33m• \033[1;31mEXPIRED USERS\033[1;37m: $_expuser \033[1;33m•\033[0m"
+# Use color functions for summary line
+yellow_code=$(get_color_code "yellow")
+cyan_code=$(get_color_code "cyan")
+white_code=$(get_color_code "white")
+green_code=$(get_color_code "green")
+red_code=$(get_color_code "red")
+reset_code=$(get_reset_code)
+echo -e "${yellow_code}• ${cyan_code}TOTAL USERS${white_code} $_tuser ${yellow_code}• ${green_code}ONLINE USERS${white_code}: $_onli ${yellow_code}• ${red_code}EXPIRED USERS${white_code}: $_expuser ${yellow_code}•${reset_code}"

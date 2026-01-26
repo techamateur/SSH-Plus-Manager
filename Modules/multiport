@@ -1,0 +1,386 @@
+#!/bin/bash
+
+# SSH Multi-Port Setup Module
+# Configures SSH to listen on multiple ports using systemd socket activation
+
+# Load color utility functions
+if [[ -f "/etc/SSHPlus/colors" ]]; then
+    source /etc/SSHPlus/colors
+elif [[ -f "/bin/colors" ]]; then
+    source /bin/colors
+elif [[ -f "$(dirname "$0")/colors" ]]; then
+    source "$(dirname "$0")/colors"
+fi
+
+# Function to verify port is valid
+verif_ptrs() {
+    local port=$1
+    if [[ ! "$port" =~ ^[0-9]+$ ]] || [[ "$port" -lt 1 ]] || [[ "$port" -gt 65535 ]]; then
+        echo ""
+        error_msg "Invalid port number! Port must be between 1 and 65535."
+        return 1
+    fi
+    return 0
+}
+
+# Function to check if systemd is available
+check_systemd() {
+    if ! command -v systemctl > /dev/null 2>&1; then
+        error_msg "systemd is not available on this system!"
+        return 1
+    fi
+    return 0
+}
+
+# Function to get current SSH ports from sshd_config
+get_current_ports() {
+    grep '^Port' /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' | sort -n | uniq
+}
+
+# Function to show current ports
+show_current_ports() {
+    local ports=$(get_current_ports)
+    if [[ -z "$ports" ]]; then
+        color_echo "No ports configured (using default port 22)" "yellow"
+    else
+        color_echo "Current SSH ports:" "green"
+        echo "$ports" | while read port; do
+            color_echo "  - Port $port" "white"
+        done
+    fi
+}
+
+# Function to add port to sshd_config
+add_port_sshd() {
+    local port=$1
+    
+    # Check if port already exists
+    if grep -q "^Port $port" /etc/ssh/sshd_config 2>/dev/null; then
+        warning_msg "Port $port is already in sshd_config"
+        return 0
+    fi
+    
+    # Add port before any Match blocks
+    if grep -q "^Match" /etc/ssh/sshd_config 2>/dev/null; then
+        # Insert before first Match block
+        sed -i "/^Match/i\Port $port" /etc/ssh/sshd_config
+    else
+        # Add at the end
+        echo "Port $port" >> /etc/ssh/sshd_config
+    fi
+    
+    # Validate configuration
+    if ! sshd -t > /dev/null 2>&1; then
+        error_msg "Invalid SSH configuration! Reverting changes..."
+        sed -i "/^Port $port$/d" /etc/ssh/sshd_config
+        return 1
+    fi
+    
+    return 0
+}
+
+# Function to remove port from sshd_config
+remove_port_sshd() {
+    local port=$1
+    
+    if [[ "$port" == "22" ]]; then
+        warning_msg "Cannot remove default port 22!"
+        return 1
+    fi
+    
+    if ! grep -q "^Port $port" /etc/ssh/sshd_config 2>/dev/null; then
+        error_msg "Port $port is not configured in sshd_config"
+        return 1
+    fi
+    
+    sed -i "/^Port $port$/d" /etc/ssh/sshd_config
+    
+    # Validate configuration
+    if ! sshd -t > /dev/null 2>&1; then
+        error_msg "Invalid SSH configuration! Reverting changes..."
+        # Restore port
+        add_port_sshd "$port"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Function to configure systemd socket
+configure_systemd_socket() {
+    local ports=$(get_current_ports)
+    
+    # Create override directory
+    mkdir -p /etc/systemd/system/ssh.socket.d
+    
+    # Create socket override file
+    cat > /etc/systemd/system/ssh.socket.d/override.conf << 'EOF'
+[Socket]
+ListenStream=
+EOF
+    
+    # Add all ports to socket configuration
+    while read port; do
+        echo "ListenStream=0.0.0.0:$port" >> /etc/systemd/system/ssh.socket.d/override.conf
+        echo "ListenStream=[::]:$port" >> /etc/systemd/system/ssh.socket.d/override.conf
+    done <<< "$ports"
+    
+    # Reload systemd
+    systemctl daemon-reload
+    
+    # Restart socket
+    systemctl restart ssh.socket
+    
+    # Restart service
+    systemctl restart ssh.service
+}
+
+# Function to configure UFW firewall
+configure_ufw() {
+    local ports=$(get_current_ports)
+    
+    if ! command -v ufw > /dev/null 2>&1; then
+        warning_msg "UFW is not installed. Skipping firewall configuration."
+        return 0
+    fi
+    
+    # Enable UFW if not already enabled
+    if ! ufw status | grep -q "Status: active"; then
+        info_msg "Enabling UFW..."
+        ufw --force enable > /dev/null 2>&1
+    fi
+    
+    # Allow all configured ports
+    while read port; do
+        ufw allow "$port/tcp" > /dev/null 2>&1
+    done <<< "$ports"
+    
+    success_msg "UFW firewall rules updated"
+}
+
+# Function to verify setup
+verify_setup() {
+    echo ""
+    color_echo "Verifying SSH multi-port setup..." "green"
+    echo ""
+    
+    # Check listening ports
+    local listening=$(ss -ltnp 2>/dev/null | grep ssh | awk '{print $4}' | cut -d: -f2 | sort -n | uniq)
+    if [[ -n "$listening" ]]; then
+        color_echo "SSH is listening on ports:" "green"
+        echo "$listening" | while read port; do
+            color_echo "  ✓ Port $port" "white"
+        done
+    else
+        warning_msg "No SSH ports found listening!"
+    fi
+    
+    # Check systemd socket status
+    if systemctl is-active --quiet ssh.socket; then
+        success_msg "systemd ssh.socket is active"
+    else
+        error_msg "systemd ssh.socket is not active!"
+    fi
+    
+    # Check sshd accepted ports
+    local accepted=$(sshd -T 2>/dev/null | grep '^port' | awk '{print $2}' | sort -n | uniq)
+    if [[ -n "$accepted" ]]; then
+        color_echo "sshd accepts connections on ports:" "green"
+        echo "$accepted" | while read port; do
+            color_echo "  ✓ Port $port" "white"
+        done
+    fi
+}
+
+# Main menu
+main_menu() {
+    while true; do
+        clear
+        print_header "         SSH MULTI-PORT SETUP          "
+        echo ""
+        show_current_ports
+        echo ""
+        menu_option "1" "ADD PORT" "red" "yellow"
+        menu_option "2" "REMOVE PORT" "red" "yellow"
+        menu_option "3" "SETUP MULTIPLE PORTS (QUICK)" "red" "yellow"
+        menu_option "4" "VERIFY SETUP" "red" "yellow"
+        menu_option "5" "BACK" "red" "yellow"
+        echo ""
+        color_echo_n "SELECT OPTION: " "green"
+        read -r option
+        
+        case "$option" in
+            1)
+                clear
+                print_header "         ADD PORT TO SSH          "
+                echo ""
+                color_echo_n "Enter port number: " "green"
+                read -r port
+                
+                if [[ -z "$port" ]]; then
+                    error_msg "Port cannot be empty!"
+                    sleep 2
+                    continue
+                fi
+                
+                if ! verif_ptrs "$port"; then
+                    sleep 2
+                    continue
+                fi
+                
+                # Check if port is already in use by another service
+                if ss -ltnp 2>/dev/null | grep -q ":$port "; then
+                    if ! ss -ltnp 2>/dev/null | grep -q ":$port.*ssh"; then
+                        warning_msg "Port $port is already in use by another service!"
+                        color_echo_n "Continue anyway? [y/n]: " "yellow"
+                        read -r confirm
+                        if [[ ! "$confirm" =~ ^[yY]$ ]]; then
+                            continue
+                        fi
+                    fi
+                fi
+                
+                echo ""
+                color_echo "Adding port $port to SSH configuration..." "green"
+                echo ""
+                
+                if add_port_sshd "$port"; then
+                    if check_systemd; then
+                        configure_systemd_socket
+                    else
+                        # Fallback: restart SSH service
+                        if command -v systemctl > /dev/null 2>&1; then
+                            systemctl restart ssh.service 2>/dev/null || systemctl restart sshd.service 2>/dev/null
+                        else
+                            service ssh restart 2>/dev/null || service sshd restart 2>/dev/null
+                        fi
+                    fi
+                    
+                    configure_ufw
+                    success_msg "Port $port added successfully!"
+                else
+                    error_msg "Failed to add port $port!"
+                fi
+                
+                sleep 3
+                ;;
+            2)
+                clear
+                print_header_red "       REMOVE PORT FROM SSH        "
+                echo ""
+                show_current_ports
+                echo ""
+                warning_msg "Cannot remove default port 22!"
+                echo ""
+                color_echo_n "Enter port number to remove: " "green"
+                read -r port
+                
+                if [[ -z "$port" ]]; then
+                    error_msg "Port cannot be empty!"
+                    sleep 2
+                    continue
+                fi
+                
+                if [[ "$port" == "22" ]]; then
+                    error_msg "Cannot remove default port 22!"
+                    sleep 2
+                    continue
+                fi
+                
+                echo ""
+                color_echo "Removing port $port from SSH configuration..." "green"
+                echo ""
+                
+                if remove_port_sshd "$port"; then
+                    if check_systemd; then
+                        configure_systemd_socket
+                    else
+                        # Fallback: restart SSH service
+                        if command -v systemctl > /dev/null 2>&1; then
+                            systemctl restart ssh.service 2>/dev/null || systemctl restart sshd.service 2>/dev/null
+                        else
+                            service ssh restart 2>/dev/null || service sshd restart 2>/dev/null
+                        fi
+                    fi
+                    
+                    success_msg "Port $port removed successfully!"
+                else
+                    error_msg "Failed to remove port $port!"
+                fi
+                
+                sleep 3
+                ;;
+            3)
+                clear
+                print_header "      QUICK MULTI-PORT SETUP       "
+                echo ""
+                color_echo "This will configure common ports:" "yellow"
+                color_echo "  22, 3398, 443, 80, 8080, 8443, 53, 993, 995" "white"
+                echo ""
+                color_echo_n "Continue? [y/n]: " "yellow"
+                read -r confirm
+                
+                if [[ ! "$confirm" =~ ^[yY]$ ]]; then
+                    continue
+                fi
+                
+                echo ""
+                color_echo "Configuring multiple ports..." "green"
+                echo ""
+                
+                # Default ports
+                local default_ports="22 3398 443 80 8080 8443 53 993 995"
+                
+                # Clear existing ports (except 22)
+                local current_ports=$(get_current_ports)
+                while read port; do
+                    if [[ "$port" != "22" ]]; then
+                        remove_port_sshd "$port" 2>/dev/null
+                    fi
+                done <<< "$current_ports"
+                
+                # Add all default ports
+                for port in $default_ports; do
+                    add_port_sshd "$port" 2>/dev/null
+                done
+                
+                # Validate configuration
+                if sshd -t > /dev/null 2>&1; then
+                    if check_systemd; then
+                        configure_systemd_socket
+                    else
+                        if command -v systemctl > /dev/null 2>&1; then
+                            systemctl restart ssh.service 2>/dev/null || systemctl restart sshd.service 2>/dev/null
+                        else
+                            service ssh restart 2>/dev/null || service sshd restart 2>/dev/null
+                        fi
+                    fi
+                    
+                    configure_ufw
+                    success_msg "Multi-port setup completed!"
+                    verify_setup
+                else
+                    error_msg "Configuration validation failed!"
+                fi
+                
+                sleep 5
+                ;;
+            4)
+                verify_setup
+                echo ""
+                color_echo_n "Press ENTER to continue..." "yellow"
+                read
+                ;;
+            5)
+                return 0
+                ;;
+            *)
+                error_msg "Invalid option!"
+                sleep 2
+                ;;
+        esac
+    done
+}
+
+# Run main menu
+main_menu

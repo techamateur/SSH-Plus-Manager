@@ -1,4 +1,14 @@
 #!/bin/bash
+
+# Load color utility functions
+if [[ -f "/etc/SSHPlus/colors" ]]; then
+    source /etc/SSHPlus/colors
+elif [[ -f "/bin/colors" ]]; then
+    source /bin/colors
+elif [[ -f "$(dirname "$0")/colors" ]]; then
+    source "$(dirname "$0")/colors"
+fi
+
 datenow=$(date +%s)
 remove_ovp () {
 if [[ -e /etc/debian_version ]]; then
@@ -17,7 +27,8 @@ chown nobody:$GROUPNAME /etc/openvpn/crl.pem
 [[ -e $HOME/$user.ovpn ]] && rm $HOME/$user.ovpn > /dev/null 2>&1
 [[ -e /var/www/html/openvpn/$user.zip ]] && rm /var/www/html/openvpn/$user.zip > /dev/null 2>&1
 } > /dev/null 2>&1
-echo -e "\E[44;1;37m User          Date         Status         Action   \E[0m"
+# Use print_header function for colored header
+print_header " User          Date         Status         Action   "
 echo ""
 for user in $(awk -F: '{print $1}' /etc/passwd); do
 	expdate=$(chage -l $user|awk -F: '/Account expires/{print $2}')
@@ -26,10 +37,12 @@ for user in $(awk -F: '{print $1}' /etc/passwd); do
 	tput setaf 3 ; tput bold ; printf '%-15s%-17s%s' $user $datanormal ; tput sgr0
 	expsec=$(date +%s --date="$expdate")
 	diff=$(echo $datenow - $expsec|bc -l)
-	tput setaf 2 ; tput bold
-	echo $diff|grep -q ^\- && echo "VALID   NOT REMOVED" && continue
-	tput setaf 1 ; tput bold
-	echo "EXPIRED   WAS REMOVED""
+	# Use color functions for status
+	if echo $diff|grep -q ^\-; then
+		color_echo "VALID   NOT REMOVED" "green"
+		continue
+	fi
+	color_echo "EXPIRED   WAS REMOVED" "red"
 	pkill -f $user
 	userdel --force $user
 	grep -v ^$user[[:space:]] /root/users.db > /tmp/ph ; cat /tmp/ph > /root/users.db

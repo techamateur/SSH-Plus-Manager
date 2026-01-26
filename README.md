@@ -1,13 +1,26 @@
-# SSH-PLUS-MANAGER V32 ENGLISH TRANSLATION
+# SSH Plus Manager
 
-**Manage Script**
+A simple tool to manage SSH users on your server. Create users, set passwords, limit connections, and manage expiration dates.
 
-## Requirements
+## What it does
 
-* Operating system based on Linux (Ubuntu or Debian)
-* Recommended Ubuntu 16.04 Server x86_64
-* It may also work on some versions of Debian Server x86_64
+- Create and remove SSH users
+- Change user passwords
+- Set connection limits per user
+- Set expiration dates for users
+- Monitor active connections
+- Manage network services
 
 ## Installation
 
-apt-get update -y; apt-get upgrade -y; wget https://raw.githubusercontent.com/jenbhie/SSH-PLUS-MANAGER/main/Plus; chmod 777 Plus; ./Plus
+Run this command on your server:
+
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/namnamir/SSH-Plus-Manager/main/install.sh)
+```
+
+**Note:** You need to run this as root.
+
+## Usage
+
+After installation, type `menu` to open the main menu.
