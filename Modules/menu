@@ -46,12 +46,27 @@ fun_bar() {
 	echo -e "${yellow_code}]${white_code} -${green_code} OK !${white_code}${reset_code}"
 	tput cnorm
 }
-# Get IP address from config file
+# Get IP address from config file (with fallbacks; used by subscripts that source menu)
 if [[ -f /etc/IP ]] && [[ -s /etc/IP ]]; then
 	IP=$(cat /etc/IP)
 else
-	IP=""
+	IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+	[[ -z "$IP" ]] && IP=$(wget -qO- --timeout=3 ipv4.icanhazip.com 2>/dev/null)
+	[[ -z "$IP" ]] && IP=$(curl -sfL --max-time 3 ipv4.icanhazip.com 2>/dev/null)
+	[[ -n "$IP" ]] && echo "$IP" > /etc/IP 2>/dev/null
+	[[ -z "$IP" ]] && IP=""
 fi
+
+# Ensure wget/curl exist when run as root (for IP and version fetches). Show message if we install.
+ensure_fetch_deps() {
+	[[ $(id -u) -ne 0 ]] && return 0
+	local need=""
+	command -v wget &>/dev/null || need="wget"
+	command -v curl &>/dev/null || need="${need:+$need }curl"
+	[[ -z "$need" ]] && return 0
+	apt-get update -qq &>/dev/null
+	apt-get install -y wget curl &>/dev/null && echo "Installed missing tools ($need) for IP/version checks." >&2
+}
 
 # Main menu function
 menu() {
@@ -97,18 +112,19 @@ menu() {
 
 		# Speedtest execution function - uses speedtest-cli only
 		fun_tst() {
-			local out_png="$HOME/speed_png" out_down="$HOME/speed_down" out_upl="$HOME/speed_upl" out_lnk="$HOME/speed_lnk"
+			local out_png="$HOME/speed_png" out_down="$HOME/speed_down" out_upl="$HOME/speed_upl" out_lnk="$HOME/speed_lnk" out_err="$HOME/speed_err"
 			echo "N/A" >"$out_png"
 			echo "N/A" >"$out_down"
 			echo "N/A" >"$out_upl"
 			echo "N/A" >"$out_lnk"
+			: >"$out_err"
 
 			if ! command -v speedtest-cli >/dev/null 2>&1; then
 				echo "SPEEDTEST_CLI_MISSING" >"$out_lnk"
 				return 1
 			fi
 			local raw
-			raw=$(speedtest-cli --simple 2>/dev/null) || true
+			raw=$(speedtest-cli --simple 2>"$out_err") || true
 			if [[ -z "$raw" ]]; then
 				echo "SPEEDTEST_CLI_FAIL" >"$out_lnk"
 				return 1
@@ -137,16 +153,40 @@ menu() {
 		if [[ "$lnk" == "SPEEDTEST_CLI_MISSING" ]]; then
 			echo ""
 			error_msg "speedtest-cli is required but not installed."
-			color_echo "Install with:  apt install speedtest-cli   or   pip install speedtest-cli" "yellow"
+			# Try to auto-install if running as root
+			if [[ "$(id -u)" -eq 0 ]]; then
+				color_echo "Attempting to install speedtest-cli..." "yellow"
+				echo ""
+				if python3 -m pip install speedtest-cli 2>&1 || pip3 install speedtest-cli 2>&1; then
+					success_msg "speedtest-cli installed. Run [09] SPEEDTEST again."
+				elif apt-get update -qq 2>/dev/null && apt-get install -y speedtest-cli 2>&1; then
+					success_msg "speedtest-cli installed (apt). Run [09] SPEEDTEST again."
+				else
+					error_msg "Auto-install failed. Errors shown above."
+					color_echo "Install manually:  pip3 install speedtest-cli   or   apt install speedtest-cli" "cyan"
+				fi
+			else
+				color_echo "Install with:  pip3 install speedtest-cli   or   apt install speedtest-cli" "yellow"
+			fi
 			echo ""
-			rm -f $HOME/speed_png $HOME/speed_down $HOME/speed_upl $HOME/speed_lnk 2>/dev/null
+			color_echo_n "Press ENTER to return to menu..." "yellow"
+			read -r
+			rm -f $HOME/speed_png $HOME/speed_down $HOME/speed_upl $HOME/speed_lnk $HOME/speed_err 2>/dev/null
 			return 0
 		fi
 		if [[ "$lnk" == "SPEEDTEST_CLI_FAIL" ]]; then
 			echo ""
-			error_msg "speedtest-cli ran but produced no output. Check your network."
+			error_msg "speedtest-cli ran but produced no output (network or config issue)."
+			if [[ -f $HOME/speed_err ]] && [[ -s $HOME/speed_err ]]; then
+				color_echo "Error output:" "yellow"
+				sed 's/^/  /' "$HOME/speed_err" | head -20
+				echo ""
+			fi
+			color_echo "Check connectivity to speedtest.net and try again." "cyan"
 			echo ""
-			rm -f $HOME/speed_png $HOME/speed_down $HOME/speed_upl $HOME/speed_lnk 2>/dev/null
+			color_echo_n "Press ENTER to return to menu..." "yellow"
+			read -r
+			rm -f $HOME/speed_png $HOME/speed_down $HOME/speed_upl $HOME/speed_lnk $HOME/speed_err 2>/dev/null
 			return 0
 		fi
 		if [[ -f $HOME/speed_png ]] && [[ -s $HOME/speed_png ]]; then
@@ -184,7 +224,7 @@ menu() {
 		echo ""
 		color_echo_n "Press ENTER to return to menu..." "yellow"
 		read -r
-		rm -rf $HOME/speed $HOME/speed_png $HOME/speed_down $HOME/speed_upl $HOME/speed_lnk 2>/dev/null
+		rm -rf $HOME/speed $HOME/speed_png $HOME/speed_down $HOME/speed_upl $HOME/speed_lnk $HOME/speed_err 2>/dev/null
 	}
 	# Toggle auto-execution of menu on login
 	autoexec() {
@@ -412,6 +452,7 @@ menu() {
 		local_ver=$(cat /etc/SSHPlus/version 2>/dev/null || cat /bin/version 2>/dev/null)
 		[[ -z "$local_ver" ]] && local_ver="0"
 		remote_ver=$(wget -qO- --timeout=5 "$repo_url/version" 2>/dev/null | head -1 | tr -d '\r\n')
+		[[ -z "$remote_ver" ]] && remote_ver=$(curl -sfL --max-time 5 "$repo_url/version" 2>/dev/null | head -1 | tr -d '\r\n')
 		[[ -z "$remote_ver" ]] && remote_ver="$local_ver"
 		local need_update=""
 		if [[ -n "$remote_ver" ]] && [[ "$local_ver" != "$remote_ver" ]]; then
@@ -568,13 +609,19 @@ menu() {
 		_userexp=$(printf '%-5s' "$_expuser")
 		_tuser=$(awk -F: '$3>=1000 {print $1}' /etc/passwd | grep -v nobody | wc -l)
 
-		# Get IPv4 address
+		# Get IPv4 address (persist to /etc/IP when we fetch it)
 		if [[ -f /etc/IP ]] && [[ -s /etc/IP ]]; then
-			_ipv4=$(cat /etc/IP)
+			_ipv4=$(tr -d '\r\n' < /etc/IP)
 		else
-			_ipv4=$(hostname -I | awk '{print $1}' 2>/dev/null)
-			[[ -z "$_ipv4" ]] && _ipv4=$(wget -qO- ipv4.icanhazip.com 2>/dev/null)
-			[[ -z "$_ipv4" ]] && _ipv4=$(curl -s ipv4.icanhazip.com 2>/dev/null)
+			_ipv4=$(hostname -I 2>/dev/null | awk '{print $1}')
+			[[ -z "$_ipv4" ]] && _ipv4=$(wget -qO- --timeout=3 ipv4.icanhazip.com 2>/dev/null)
+			[[ -z "$_ipv4" ]] && _ipv4=$(curl -sfL --max-time 3 ipv4.icanhazip.com 2>/dev/null)
+			if [[ -z "$_ipv4" ]]; then
+				ensure_fetch_deps
+				_ipv4=$(wget -qO- --timeout=5 ipv4.icanhazip.com 2>/dev/null)
+				[[ -z "$_ipv4" ]] && _ipv4=$(curl -sfL --max-time 5 ipv4.icanhazip.com 2>/dev/null)
+			fi
+			[[ -n "$_ipv4" ]] && echo "$_ipv4" > /etc/IP 2>/dev/null
 			[[ -z "$_ipv4" ]] && _ipv4="N/A"
 		fi
 
@@ -625,11 +672,25 @@ menu() {
 		[[ -z "$_ports" ]] && _ports=$(netstat -tuln 2>/dev/null | awk '/LISTEN/ {gsub(/.*:/,"",$4); print $4}' | sort -nu | tr '\n' ' ')
 		[[ -z "$_ports" ]] && _ports="N/A"
 
-		# Version check for update availability
+		# Version check for update availability (fetch and persist if missing)
 		_ver_repo="${_ver_repo:-https://raw.githubusercontent.com/namnamir/SSH-Plus-Manager/main}"
 		[[ -f /etc/SSHPlus/repo_url ]] && [[ -s /etc/SSHPlus/repo_url ]] && _ver_repo=$(tr -d '\r\n' < /etc/SSHPlus/repo_url)
-		_ver_local=$(cat /etc/SSHPlus/version 2>/dev/null || cat /bin/version 2>/dev/null); [[ -z "$_ver_local" ]] && _ver_local="0"
+		_ver_local=$(cat /etc/SSHPlus/version 2>/dev/null || cat /bin/version 2>/dev/null)
+		_ver_local="${_ver_local:-0}"
+		if [[ -z "$_ver_local" ]] || [[ "$_ver_local" == "0" ]]; then
+			ensure_fetch_deps
+			_ver_fetched=$(wget -qO- --timeout=5 "$_ver_repo/version" 2>/dev/null | head -1 | tr -d '\r\n')
+			[[ -z "$_ver_fetched" ]] && _ver_fetched=$(curl -sfL --max-time 5 "$_ver_repo/version" 2>/dev/null | head -1 | tr -d '\r\n')
+			if [[ -n "$_ver_fetched" ]]; then
+				mkdir -p /etc/SSHPlus
+				echo "$_ver_fetched" > /etc/SSHPlus/version 2>/dev/null
+				echo "$_ver_fetched" > /bin/version 2>/dev/null
+				_ver_local="$_ver_fetched"
+			fi
+		fi
+		[[ -z "$_ver_local" ]] && _ver_local="0"
 		_ver_remote=$(wget -qO- --timeout=3 "$_ver_repo/version" 2>/dev/null | head -1 | tr -d '\r\n')
+		[[ -z "$_ver_remote" ]] && _ver_remote=$(curl -sfL --max-time 3 "$_ver_repo/version" 2>/dev/null | head -1 | tr -d '\r\n')
 		[[ -z "$_ver_remote" ]] && _ver_remote="$_ver_local"
 		_ver_update=""
 		if [[ -n "$_ver_remote" ]] && [[ "$_ver_local" != "$_ver_remote" ]]; then

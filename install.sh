@@ -239,11 +239,29 @@ sleep 3s
 echo "/bin/menu" > /bin/h
 chmod +x /bin/h > /dev/null 2>&1
 
-# Download the version file to check for updates
-rm version* > /dev/null 2>&1
-if ! wget "$_REPO_URL/version" > /dev/null 2>&1; then
-    echo ""
-    warning_msg "Could not fetch version file; update checks may be limited."
+# Download the version file and persist it for update checks (menu reads /etc/SSHPlus/version or /bin/version)
+_ver_tmp="/tmp/sshplus_version_$$"
+_ver_value=""
+if wget -qO- --timeout=5 "$_REPO_URL/version" 2>/dev/null | head -1 | tr -d '\r\n' > "$_ver_tmp"; then
+	[[ -s "$_ver_tmp" ]] && _ver_value=$(cat "$_ver_tmp")
+fi
+[[ -z "$_ver_value" ]] && curl -sfL --max-time 5 "$_REPO_URL/version" 2>/dev/null | head -1 | tr -d '\r\n' > "$_ver_tmp"
+[[ -s "$_ver_tmp" ]] && _ver_value=$(cat "$_ver_tmp")
+rm -f "$_ver_tmp" 2>/dev/null
+if [[ -n "$_ver_value" ]]; then
+	mkdir -p /etc/SSHPlus
+	echo "$_ver_value" > /etc/SSHPlus/version 2>/dev/null
+	echo "$_ver_value" > /bin/version 2>/dev/null
+else
+	echo ""
+	warning_msg "Could not fetch version file; update checks may be limited."
+fi
+# Fetch and persist public IP so menu and user-creation show it even before list runs
+_ip_val=""
+_ip_val=$(wget -qO- --timeout=5 ipv4.icanhazip.com 2>/dev/null)
+[[ -z "$_ip_val" ]] && _ip_val=$(curl -sfL --max-time 5 ipv4.icanhazip.com 2>/dev/null)
+if [[ -n "$_ip_val" ]]; then
+	echo "$_ip_val" > /etc/IP 2>/dev/null
 fi
 echo ""
 success_msg "Installation key verified."
@@ -284,7 +302,6 @@ print_header " WAITING FOR INSTALLATION"
 echo ""
 echo ""
 color_echo "Updating system packages..." "green"
-color_echo "This may take a few minutes." "yellow"
 echo ""
 
 # Function to update system package lists
@@ -305,38 +322,80 @@ fun_attlist() {
 fun_bar 'fun_attlist'
 
 echo ""
-color_echo "Installing required packages..." "green"
-color_echo "Please wait." "yellow"
+color_echo "Installing dependencies..." "green"
 echo ""
 
-# Function to install required packages
-inst_pct() {
-    # List of required packages for the SSH Plus Manager
-    # bc: calculator for scripts
-    # screen: terminal multiplexer for background processes
-    # nano: text editor
-    # unzip: extract zip files
-    # lsof: list open files (for monitoring connections)
-    # netstat: network statistics (deprecated but still used)
-    # net-tools: network utilities (includes netstat)
-    # dos2unix: convert Windows line endings to Unix
-    # nload: network traffic monitor
-    # jq: JSON processor
-    # curl: download files from internet
-    # figlet: ASCII art text generator
-    # python3: Python programming language
-    # python3-pip: Python package installer (fixed from python-pip)
-    _packages=("bc" "screen" "nano" "unzip" "lsof" "netstat" "net-tools" "dos2unix" "nload" "jq" "curl" "figlet" "python3" "python3-pip")
+# ------------------------------------------------------------------------------
+# DEPENDENCIES – all tools required by SSH Plus Manager (install + menu + modules)
+# ------------------------------------------------------------------------------
+#  wget          – download files, version, IP; used by install.sh, Install/list, menu
+#  curl          – fallback download; IP/version fetch; used by install, menu, speedtest
+#  bc            – calculator in scripts (e.g. traffic/stats)
+#  screen        – run proxy.py, open.py, autostart; used by conexao, Install/list
+#  nano          – edit hosts, openvpn config; used by criarusuario, conexao
+#  unzip         – extract archives; used by Install/list and other modules
+#  zip           – create OVPN zip bundles; used by criarusuario
+#  lsof          – list open files / connections; used by monitoring
+#  net-tools     – provides netstat; used by sshmonitor, conexao, Install/list
+#  dos2unix      – fix line endings in scripts
+#  nload         – [11] VPS TRAFFIC in menu
+#  jq            – JSON; used by Install/list and any JSON config
+#  figlet        – ASCII art / banners
+#  python3       – run open.py, proxy.py, speedtest-cli
+#  python3-pip   – install speedtest-cli (pip package)
+#  speedtest-cli – [09] SPEEDTEST in menu; apt if available, else pip
+# ------------------------------------------------------------------------------
 
-    # Install each package in the list
-    # BUG FIX: Changed _pacotes to _packages (was causing silent failure)
-    for _prog in "${_packages[@]}"; do
-        apt install "$_prog" -y > /dev/null 2>&1
+inst_pct() {
+    local _pkg _missing=() _m
+    local _packages=(
+        wget
+        curl
+        bc
+        screen
+        nano
+        unzip
+        zip
+        lsof
+        net-tools
+        dos2unix
+        nload
+        jq
+        figlet
+        python3
+        python3-pip
+        speedtest-cli
+    )
+
+    for _pkg in "${_packages[@]}"; do
+        if ! apt install -y "$_pkg" >/dev/null 2>&1; then
+            _missing+=("$_pkg")
+        fi
     done
 
-    # Install speedtest-cli using pip for network speed testing
-    # Use pip3 explicitly for Python 3
-    pip3 install speedtest-cli > /dev/null 2>&1 || python3 -m pip install speedtest-cli > /dev/null 2>&1
+    # speedtest-cli: if apt failed, try pip (many distros only have it via pip)
+    if ! command -v speedtest-cli >/dev/null 2>&1; then
+        python3 -m pip install speedtest-cli >/dev/null 2>&1 || pip3 install speedtest-cli >/dev/null 2>&1 || true
+        if command -v speedtest-cli >/dev/null 2>&1; then
+            # remove from _missing so we don't report it as failed
+            _m=()
+            for _pkg in "${_missing[@]}"; do
+                [[ "$_pkg" != "speedtest-cli" ]] && _m+=("$_pkg")
+            done
+            _missing=("${_m[@]}")
+        fi
+    fi
+
+    if [[ ${#_missing[@]} -gt 0 ]]; then
+        echo "" >&2
+        warning_msg "Could not install: ${_missing[*]}"
+        warning_msg "Install manually: apt install -y ${_missing[*]}"
+        echo "" >&2
+    fi
+
+    if ! command -v speedtest-cli >/dev/null 2>&1; then
+        warning_msg "speedtest-cli is missing. Install later with: pip3 install speedtest-cli"
+    fi
 }
 
 # Run package installation with progress bar
@@ -354,7 +413,6 @@ fi
 
 echo ""
 color_echo "Finalizing installation..." "green"
-color_echo "Configuring components." "yellow"
 echo ""
 
 # Run the main installation script that sets up all modules
@@ -363,7 +421,11 @@ fun_bar "$_Ink/list $_lnk $_Ink $_1nk $key"
 
 # Persist installed version for update checks (menu reads /etc/SSHPlus/version or /bin/version)
 [[ -d /etc/SSHPlus ]] || mkdir -p /etc/SSHPlus
-[[ -s /bin/version ]] && cp /bin/version /etc/SSHPlus/version 2>/dev/null
+if [[ -s /bin/version ]]; then
+	cp /bin/version /etc/SSHPlus/version 2>/dev/null
+elif [[ -s /etc/SSHPlus/version ]]; then
+	cp /etc/SSHPlus/version /bin/version 2>/dev/null
+fi
 
 echo ""
 cd "$HOME" || exit 1

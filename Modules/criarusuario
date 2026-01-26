@@ -13,7 +13,16 @@ elif [[ -f "$(dirname "$0")/colors" ]]; then
     source "$(dirname "$0")/colors"
 fi
 
-IP=$(cat /etc/IP)
+# Load IP: use /etc/IP if set, else detect and persist for next time
+if [[ -f /etc/IP ]] && [[ -s /etc/IP ]]; then
+	IP=$(tr -d '\r\n' < /etc/IP)
+else
+	IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+	[[ -z "$IP" ]] && IP=$(wget -qO- --timeout=3 ipv4.icanhazip.com 2>/dev/null)
+	[[ -z "$IP" ]] && IP=$(curl -sfL --max-time 3 ipv4.icanhazip.com 2>/dev/null)
+	[[ -n "$IP" ]] && echo "$IP" > /etc/IP 2>/dev/null
+	[[ -z "$IP" ]] && IP=""
+fi
 # Old color variables - kept for backward compatibility but should use error_msg() instead
 cor1='\033[41;1;37m'
 cor2='\033[44;1;37m'
@@ -530,6 +539,18 @@ echo "$username $sshlimiter" >>/root/users.db
 	print_header "       SSH ACCOUNT CREATED !      "
 	# Use color functions for account info display
 	echo ""
+	# Ensure IP is set (same fallback as other branches)
+	if [[ -z "$IP" ]]; then
+		if [[ -f /etc/IP ]] && [[ -s /etc/IP ]]; then
+			IP=$(cat /etc/IP)
+		else
+			IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+			[[ -z "$IP" ]] && IP=$(wget -qO- ipv4.icanhazip.com 2>/dev/null)
+			[[ -z "$IP" ]] && IP=$(curl -s ipv4.icanhazip.com 2>/dev/null)
+			[[ -n "$IP" ]] && echo "$IP" > /etc/IP 2>/dev/null
+			[[ -z "$IP" ]] && IP="N/A"
+		fi
+	fi
 	color_echo_n "IP: " "green"
 	color_echo "$IP" "white"
 	color_echo_n "User: " "green"

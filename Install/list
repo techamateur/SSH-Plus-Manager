@@ -7,11 +7,14 @@
 # GitHub repository URL
 _REPO_URL="https://raw.githubusercontent.com/namnamir/SSH-Plus-Manager/main"
 
-_lvk=$(wget -qO- $_REPO_URL/Install/version)
-IP=$(wget -qO- ipv4.icanhazip.com)
-IP2=$(wget -qO- http://whatismyip.akamai.com/)
-[[ "$IP" != "$IP2" ]] && ipdovps="$IP2" || ipdovps="$IP"
-echo -e "$ipdovps" >/etc/IP
+# Version: use repo root version (single source of truth)
+_lvk=$(wget -qO- --timeout=5 "$_REPO_URL/version" 2>/dev/null)
+[[ -z "$_lvk" ]] && _lvk=$(curl -sfL --max-time 5 "$_REPO_URL/version" 2>/dev/null)
+IP=$(wget -qO- --timeout=5 ipv4.icanhazip.com 2>/dev/null)
+[[ -z "$IP" ]] && IP=$(curl -sfL --max-time 5 ipv4.icanhazip.com 2>/dev/null)
+IP2=$(wget -qO- --timeout=5 http://whatismyip.akamai.com/ 2>/dev/null)
+[[ -z "$IP2" ]] && IP2=$(curl -sfL --max-time 5 http://whatismyip.akamai.com/ 2>/dev/null)
+[[ -n "$IP" ]] || [[ -n "$IP2" ]] && { [[ "$IP" != "$IP2" ]] && ipdovps="${IP2:-$IP}" || ipdovps="${IP:-$IP2}"; echo "$ipdovps" >/etc/IP; }
 lst=$1 && lst1=$2 && lst2=$3 && key1=$4 && key2=crz
 echo -e "Asia/Manila" >/etc/timezone
 ln -fs /usr/share/zoneinfo/Asia/Manila /etc/localtime >/dev/null 2>&1
@@ -96,7 +99,9 @@ crontab -r >/dev/null 2>&1
 	echo "* * * * * /etc/autostart"
 	echo "0 */6 * * * /bin/uexpired"
 ) | crontab -
-echo "$_lvk" | sed -n '1 p' | cut -d' ' -f2 >/bin/version && cat /bin/version >/home/sshplus
+# Root version file is plain "X.Y.Z"; write first line to /bin/version
+echo "$_lvk" | head -1 | tr -d '\r\n' >/bin/version
+[[ -s /bin/version ]] && cp /bin/version /home/sshplus 2>/dev/null
 # Download jq from official repository (jqlang/jq)
 # Try to download latest jq-linux-amd64 from GitHub releases
 if ! wget -q https://github.com/jqlang/jq/releases/latest/download/jq-linux-amd64 -O jq-linux64 2>/dev/null; then
