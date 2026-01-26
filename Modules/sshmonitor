@@ -183,8 +183,6 @@ _format_last_seen() {
 }
 
 _do_display() {
-	# Clear screen and move cursor to home so refresh doesn't leave ghost lines
-	printf '\033[2J\033[H'
 	_userlist=$(awk -F: '$3>=1000 {print $1}' /etc/passwd 2>/dev/null | grep -v nobody)
 	_tmp_usage=$(mktemp 2>/dev/null || echo "/tmp/sshmon_usage_$$")
 	_tmp_lastseen=$(mktemp 2>/dev/null || echo "/tmp/sshmon_lastseen_$$")
@@ -324,6 +322,9 @@ _do_display() {
 	_body+="$(print_header " User      Conn  Time      Down/Up      Total↓/↑    TotalTime  Days   Last (datetime)  Password   ")"$'\n\n'
 	for row in "${_rows[@]}"; do _body+="$row"$'\n'; done
 	_body+=$'\n'"${yellow_code}Press Enter to return to menu (auto-refresh 10s)${reset_code}"
+
+	# Clear the screen, then draw the new content (proper refresh, no stacking)
+	clear
 	echo -e "$_body"
 }
 
