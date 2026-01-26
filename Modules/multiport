@@ -12,6 +12,237 @@ elif [[ -f "$(dirname "$0")/colors" ]]; then
     source "$(dirname "$0")/colors"
 fi
 
+# Function to check and install dependencies
+check_dependencies() {
+    local missing_deps=()
+    local install_needed=false
+    local needs_root=false
+    
+    # Check for package manager
+    local pkg_manager=""
+    if command -v apt-get > /dev/null 2>&1; then
+        pkg_manager="apt-get"
+    elif command -v yum > /dev/null 2>&1; then
+        pkg_manager="yum"
+    elif command -v dnf > /dev/null 2>&1; then
+        pkg_manager="dnf"
+    elif command -v pacman > /dev/null 2>&1; then
+        pkg_manager="pacman"
+    fi
+    
+    info_msg "Checking dependencies..."
+    
+    # Check for openssh-server
+    if ! command -v sshd > /dev/null 2>&1; then
+        missing_deps+=("openssh-server")
+        install_needed=true
+        needs_root=true
+    fi
+    
+    # Check for ss (from iproute2)
+    if ! command -v ss > /dev/null 2>&1; then
+        missing_deps+=("iproute2")
+        install_needed=true
+        needs_root=true
+    fi
+    
+    # Check for systemctl (from systemd) - optional but recommended
+    if ! command -v systemctl > /dev/null 2>&1; then
+        warning_msg "systemd not found. Some features may not work."
+    fi
+    
+    # Check for ufw - optional
+    if ! command -v ufw > /dev/null 2>&1; then
+        info_msg "UFW not installed (optional - firewall configuration will be skipped)"
+    fi
+    
+    # Check for essential text processing tools
+    for tool in grep sed awk cut; do
+        if ! command -v "$tool" > /dev/null 2>&1; then
+            missing_deps+=("$tool")
+            install_needed=true
+            needs_root=true
+        fi
+    done
+    
+    # If installation is needed, check for root access
+    if [[ $needs_root == true ]]; then
+        if [[ $EUID -ne 0 ]]; then
+            error_msg "Missing dependencies detected. This script must be run as root to install them."
+            error_msg "Missing: ${missing_deps[*]}"
+            error_msg "Please run: sudo $0"
+            return 1
+        fi
+        
+        if [[ -z "$pkg_manager" ]]; then
+            error_msg "No supported package manager found. Please install dependencies manually:"
+            error_msg "Missing: ${missing_deps[*]}"
+            return 1
+        fi
+    fi
+    
+    # Check for package manager
+    local pkg_manager=""
+    if command -v apt-get > /dev/null 2>&1; then
+        pkg_manager="apt-get"
+    elif command -v yum > /dev/null 2>&1; then
+        pkg_manager="yum"
+    elif command -v dnf > /dev/null 2>&1; then
+        pkg_manager="dnf"
+    elif command -v pacman > /dev/null 2>&1; then
+        pkg_manager="pacman"
+    else
+        warning_msg "No supported package manager found. Please install dependencies manually."
+        return 1
+    fi
+    
+    info_msg "Checking dependencies..."
+    
+    # Check for openssh-server
+    if ! command -v sshd > /dev/null 2>&1; then
+        missing_deps+=("openssh-server")
+        install_needed=true
+    fi
+    
+    # Check for ss (from iproute2)
+    if ! command -v ss > /dev/null 2>&1; then
+        missing_deps+=("iproute2")
+        install_needed=true
+    fi
+    
+    # Check for systemctl (from systemd) - optional but recommended
+    if ! command -v systemctl > /dev/null 2>&1; then
+        warning_msg "systemd not found. Some features may not work."
+    fi
+    
+    # Check for ufw - optional
+    if ! command -v ufw > /dev/null 2>&1; then
+        info_msg "UFW not installed (optional - firewall configuration will be skipped)"
+    fi
+    
+    # Check for essential text processing tools
+    for tool in grep sed awk cut; do
+        if ! command -v "$tool" > /dev/null 2>&1; then
+            missing_deps+=("$tool")
+            install_needed=true
+        fi
+    done
+    
+    # Install missing dependencies if needed
+    if [[ $install_needed == true ]]; then
+        info_msg "Installing missing dependencies: ${missing_deps[*]}"
+        
+        case "$pkg_manager" in
+            apt-get)
+                apt-get update -qq > /dev/null 2>&1
+                for dep in "${missing_deps[@]}"; do
+                    if [[ "$dep" == "openssh-server" ]]; then
+                        apt-get install -y openssh-server > /dev/null 2>&1
+                    elif [[ "$dep" == "iproute2" ]]; then
+                        apt-get install -y iproute2 > /dev/null 2>&1
+                    elif [[ "$dep" == "grep" ]]; then
+                        apt-get install -y grep > /dev/null 2>&1
+                    elif [[ "$dep" == "sed" ]]; then
+                        apt-get install -y sed > /dev/null 2>&1
+                    elif [[ "$dep" == "awk" ]]; then
+                        apt-get install -y gawk > /dev/null 2>&1
+                    elif [[ "$dep" == "cut" ]]; then
+                        apt-get install -y coreutils > /dev/null 2>&1
+                    fi
+                done
+                ;;
+            yum)
+                for dep in "${missing_deps[@]}"; do
+                    if [[ "$dep" == "openssh-server" ]]; then
+                        yum install -y openssh-server > /dev/null 2>&1
+                    elif [[ "$dep" == "iproute2" ]]; then
+                        yum install -y iproute > /dev/null 2>&1
+                    elif [[ "$dep" == "grep" ]]; then
+                        yum install -y grep > /dev/null 2>&1
+                    elif [[ "$dep" == "sed" ]]; then
+                        yum install -y sed > /dev/null 2>&1
+                    elif [[ "$dep" == "awk" ]]; then
+                        yum install -y gawk > /dev/null 2>&1
+                    elif [[ "$dep" == "cut" ]]; then
+                        yum install -y coreutils > /dev/null 2>&1
+                    fi
+                done
+                ;;
+            dnf)
+                for dep in "${missing_deps[@]}"; do
+                    if [[ "$dep" == "openssh-server" ]]; then
+                        dnf install -y openssh-server > /dev/null 2>&1
+                    elif [[ "$dep" == "iproute2" ]]; then
+                        dnf install -y iproute > /dev/null 2>&1
+                    elif [[ "$dep" == "grep" ]]; then
+                        dnf install -y grep > /dev/null 2>&1
+                    elif [[ "$dep" == "sed" ]]; then
+                        dnf install -y sed > /dev/null 2>&1
+                    elif [[ "$dep" == "awk" ]]; then
+                        dnf install -y gawk > /dev/null 2>&1
+                    elif [[ "$dep" == "cut" ]]; then
+                        dnf install -y coreutils > /dev/null 2>&1
+                    fi
+                done
+                ;;
+            pacman)
+                for dep in "${missing_deps[@]}"; do
+                    if [[ "$dep" == "openssh-server" ]]; then
+                        pacman -S --noconfirm openssh > /dev/null 2>&1
+                    elif [[ "$dep" == "iproute2" ]]; then
+                        pacman -S --noconfirm iproute2 > /dev/null 2>&1
+                    elif [[ "$dep" == "grep" ]]; then
+                        pacman -S --noconfirm grep > /dev/null 2>&1
+                    elif [[ "$dep" == "sed" ]]; then
+                        pacman -S --noconfirm sed > /dev/null 2>&1
+                    elif [[ "$dep" == "awk" ]]; then
+                        pacman -S --noconfirm gawk > /dev/null 2>&1
+                    elif [[ "$dep" == "cut" ]]; then
+                        pacman -S --noconfirm coreutils > /dev/null 2>&1
+                    fi
+                done
+                ;;
+        esac
+        
+        # Verify installations
+        local failed=()
+        for dep in "${missing_deps[@]}"; do
+            local cmd=""
+            case "$dep" in
+                openssh-server) cmd="sshd" ;;
+                iproute2) cmd="ss" ;;
+                grep) cmd="grep" ;;
+                sed) cmd="sed" ;;
+                awk) cmd="awk" ;;
+                cut) cmd="cut" ;;
+            esac
+            
+            if [[ -n "$cmd" ]] && ! command -v "$cmd" > /dev/null 2>&1; then
+                failed+=("$dep")
+            fi
+        done
+        
+        if [[ ${#failed[@]} -gt 0 ]]; then
+            error_msg "Failed to install: ${failed[*]}"
+            error_msg "Please install them manually and try again."
+            return 1
+        else
+            success_msg "All dependencies installed successfully!"
+        fi
+    else
+        success_msg "All dependencies are installed."
+    fi
+    
+    # Verify sshd_config exists
+    if [[ ! -f "/etc/ssh/sshd_config" ]]; then
+        error_msg "SSH configuration file not found: /etc/ssh/sshd_config"
+        error_msg "Please ensure OpenSSH server is properly installed."
+        return 1
+    fi
+    
+    return 0
+}
+
 # Function to verify port is valid
 verif_ptrs() {
     local port=$1
@@ -34,11 +265,62 @@ check_systemd() {
 
 # Function to ensure required SSH directories exist
 ensure_ssh_directories() {
-    # Create privilege separation directory if missing
-    if [[ ! -d "/run/sshd" ]]; then
-        mkdir -p /run/sshd
-        chmod 0755 /run/sshd
+    # Check if privilege separation is disabled in sshd_config
+    if grep -qE "^[[:space:]]*UsePrivilegeSeparation[[:space:]]+no" /etc/ssh/sshd_config 2>/dev/null; then
+        # Privilege separation is disabled, directory not needed
+        return 0
     fi
+    
+    # Try to create /run/sshd first (most common location)
+    if [[ ! -d "/run/sshd" ]]; then
+        if mkdir -p /run/sshd 2>/dev/null; then
+            chmod 0755 /run/sshd 2>/dev/null
+            chown root:root /run/sshd 2>/dev/null || true
+        else
+            # If /run/sshd fails, try /var/run/sshd
+            if [[ ! -d "/var/run/sshd" ]]; then
+                if mkdir -p /var/run/sshd 2>/dev/null; then
+                    chmod 0755 /var/run/sshd 2>/dev/null
+                    chown root:root /var/run/sshd 2>/dev/null || true
+                fi
+            fi
+            
+            # If still can't create, check if we can configure sshd_config to use different location
+            if [[ ! -d "/run/sshd" ]] && [[ ! -d "/var/run/sshd" ]]; then
+                # Check if PrivilegeSeparationDirectory is set in config
+                if ! grep -qE "^[[:space:]]*PrivilegeSeparationDirectory" /etc/ssh/sshd_config 2>/dev/null; then
+                    # Try to add it pointing to /var/run/sshd if that exists
+                    if [[ -d "/var/run" ]]; then
+                        if mkdir -p /var/run/sshd 2>/dev/null; then
+                            chmod 0755 /var/run/sshd 2>/dev/null
+                            # Add configuration to use this directory
+                            if ! grep -q "PrivilegeSeparationDirectory" /etc/ssh/sshd_config 2>/dev/null; then
+                                echo "PrivilegeSeparationDirectory /var/run/sshd" >> /etc/ssh/sshd_config 2>/dev/null || true
+                            fi
+                        fi
+                    fi
+                fi
+            fi
+        fi
+    fi
+    
+    # Final verification - check if directory exists or privilege separation is disabled
+    if [[ ! -d "/run/sshd" ]] && [[ ! -d "/var/run/sshd" ]]; then
+        # Check if privilege separation directory is configured in sshd_config
+        local priv_sep_dir=$(grep -E "^[[:space:]]*PrivilegeSeparationDirectory" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' | head -1)
+        if [[ -n "$priv_sep_dir" ]] && [[ -d "$priv_sep_dir" ]]; then
+            return 0
+        fi
+        
+        # Last resort: disable privilege separation if directory can't be created
+        if ! grep -qE "^[[:space:]]*UsePrivilegeSeparation" /etc/ssh/sshd_config 2>/dev/null; then
+            echo "UsePrivilegeSeparation no" >> /etc/ssh/sshd_config 2>/dev/null || true
+            return 0
+        fi
+        
+        return 1
+    fi
+    
     return 0
 }
 
@@ -97,7 +379,12 @@ add_port_sshd() {
     fi
     
     # Ensure required SSH directories exist before validation
-    ensure_ssh_directories
+    if ! ensure_ssh_directories; then
+        if [[ "$quiet" != "true" ]]; then
+            error_msg "Failed to create required SSH directories. Please run as root or create /run/sshd manually."
+        fi
+        # Still try to validate - sometimes sshd can work without the directory
+    fi
     
     # Validate configuration immediately after adding
     local validation_output=$(sshd -t 2>&1)
@@ -349,7 +636,13 @@ main_menu() {
                 fi
                 
                 # Ensure required SSH directories exist
-                ensure_ssh_directories
+                if ! ensure_ssh_directories; then
+                    error_msg "Warning: Could not create /run/sshd directory."
+                    error_msg "Please create it manually: mkdir -p /run/sshd && chmod 0755 /run/sshd"
+                    error_msg "Or run this script as root."
+                    sleep 3
+                    continue
+                fi
                 
                 # Create backup of sshd_config before making changes
                 local backup_file="/etc/ssh/sshd_config.backup.$(date +%Y%m%d_%H%M%S)"
@@ -505,6 +798,12 @@ main_menu() {
         esac
     done
 }
+
+# Check dependencies before starting
+if ! check_dependencies; then
+    error_msg "Dependency check failed. Exiting..."
+    exit 1
+fi
 
 # Run main menu
 main_menu
