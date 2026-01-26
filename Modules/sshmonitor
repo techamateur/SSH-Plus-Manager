@@ -203,13 +203,15 @@ _do_display() {
 		fi
 		sqd=0
 		if grep -qw "$user" /etc/passwd 2>/dev/null; then
-			sqd=$(ps -u "$user" 2>/dev/null | grep -c sshd || echo 0)
+			sqd=$(ps -u "$user" 2>/dev/null | grep -c sshd 2>/dev/null || echo 0)
 		fi
-		[[ -z "$sqd" ]] && sqd=0
+		sqd=${sqd//[!0-9]/}; sqd=${sqd:-0}
 		ovp=0
 		[[ -e /etc/openvpn/openvpn-status.log ]] && ovp=$(grep -E ,"$user", /etc/openvpn/openvpn-status.log 2>/dev/null | wc -l)
+		ovp=${ovp//[!0-9]/}; ovp=${ovp:-0}
 		drop=0
 		netstat -nltp 2>/dev/null | grep -q dropbear && drop=$(fun_drop | grep -c "^${user}$" 2>/dev/null || echo 0)
+		drop=${drop//[!0-9]/}; drop=${drop:-0}
 		cnx=$((sqd + drop))
 		conex=$((cnx + ovp))
 
