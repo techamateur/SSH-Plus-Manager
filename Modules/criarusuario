@@ -302,11 +302,7 @@ fun_edithost() {
 clear
 tput setaf 7;tput setab 4;tput bold;printf '%30s%s%-15s\n' "Create SSH User";tput sgr0
 echo ""
-menu_option "0" "BACK TO MENU" "red" "yellow"
-menu_option "00" "EXIT" "red" "yellow"
-echo ""
-color_echo_n "Username " "green"
-color_echo_n "(0=back 00=exit): " "yellow"
+color_echo_n "Enter new username to create user (0=back 00=exit): " "green"
 read -r username
 username="${username//[[:space:]]/}"
 [[ "$username" == "0" ]] && exit 0
