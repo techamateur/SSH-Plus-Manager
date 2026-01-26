@@ -3,14 +3,56 @@
 # SSH Plus Manager Installation Script
 # This script installs and configures the SSH Plus Manager system
 
-# Load color utility functions (if available locally)
-# These functions have internal fallback, so they work even if colors file isn't sourced
+# Load color utility functions
+# Try to source from local file first (if running from repo)
+# Otherwise download from repo and source it
 if [[ -f "$(dirname "$0")/Modules/colors" ]]; then
     source "$(dirname "$0")/Modules/colors"
 elif [[ -f "/etc/SSHPlus/colors" ]]; then
     source /etc/SSHPlus/colors
 elif [[ -f "/bin/colors" ]]; then
     source /bin/colors
+else
+    # Download colors file from repo and source it
+    # This handles the case when install.sh is run via: bash <(curl ...)
+    _tmp_colors="/tmp/sshplus_colors_$$"
+    if wget -q https://raw.githubusercontent.com/namnamir/SSH-Plus-Manager/main/Modules/colors -O "$_tmp_colors" 2>/dev/null; then
+        source "$_tmp_colors"
+        rm -f "$_tmp_colors" 2>/dev/null
+    else
+        # If download fails, define minimal fallback functions
+        color_echo() { echo -e "\033[1;37m$1\033[0m"; }
+        color_echo_n() { echo -ne "\033[1;37m$1\033[0m"; }
+        error_msg() { echo -e "\033[1;31m$1\033[0m"; }
+        success_msg() { echo -e "\033[1;32m$1\033[0m"; }
+        warning_msg() { echo -e "\033[1;33m$1\033[0m"; }
+        info_msg() { echo -e "\033[1;36m$1\033[0m"; }
+        menu_option() { echo -e "\033[1;31m[\033[1;36m$1\033[1;31m] \033[1;33m$2\033[0m"; }
+        get_color_code() {
+            case "$1" in
+                red) echo -n "\033[1;31m" ;;
+                green) echo -n "\033[1;32m" ;;
+                yellow) echo -n "\033[1;33m" ;;
+                blue) echo -n "\033[1;34m" ;;
+                cyan) echo -n "\033[1;36m" ;;
+                white) echo -n "\033[1;37m" ;;
+                *) echo -n "\033[1;37m" ;;
+            esac
+        }
+        get_reset_code() { echo -n "\033[0m"; }
+        print_header() {
+            tput setab 4 2>/dev/null
+            tput bold 2>/dev/null
+            echo -e "\033[44;1;37m$1\033[0m"
+            tput sgr0 2>/dev/null
+        }
+        print_header_red() {
+            tput setab 1 2>/dev/null
+            tput bold 2>/dev/null
+            echo -e "\033[41;1;37m$1\033[0m"
+            tput sgr0 2>/dev/null
+        }
+    fi
 fi
 
 # Clear the screen for a clean start
@@ -115,7 +157,24 @@ function verif_key() {
         exit 1
     fi
 }
-# Display welcome banner
+# Display logo and welcome banner
+cyan_code=$(get_color_code "cyan")
+blue_code=$(get_color_code "blue")
+green_code=$(get_color_code "green")
+yellow_code=$(get_color_code "yellow")
+red_code=$(get_color_code "red")
+reset_code=$(get_reset_code)
+
+# Display ASCII logo
+echo ""
+echo -e "${cyan_code}                                                                       ${reset_code}"
+echo -e "${cyan_code} _____ _____ _____    _____ _            _____                         ${reset_code}"
+echo -e "${cyan_code}|   __|   __|  |  |  |  _  | |_ _ ___   |     |___ ___ ___ ___ ___ ___ ${reset_code}"
+echo -e "${cyan_code}|__   |__   |     |  |   __| | | |_ -|  | | | | .'|   | .'| . | -_|  _|${reset_code}"
+echo -e "${cyan_code}|_____|_____|__|__|  |__|  |_|___|___|  |_|_|_|__,|_|_|__,|_  |___|_|  ${reset_code}"
+echo -e "${cyan_code}                                                          |___|        ${reset_code}"
+echo ""
+
 red_code=$(get_color_code "red")
 reset_code=$(get_reset_code)
 echo -e "${red_code}════════════════════════════════════════════════════${reset_code}"

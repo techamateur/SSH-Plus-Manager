@@ -615,21 +615,25 @@ fi
 				echo -e "\n\033[1;32mCREATING CERTIFICATE !\033[0m"
 				echo ""
 				ssl_certif() {
-					#crt='EC'
-					#openssl genrsa -out key.pem 2048 >/dev/null 2>&1
-					#(
-					#echo $crt
-					#echo $crt
-					#echo $crt
-					#echo $crt
-					#echo $crt
-					#echo $crt
-					#echo $crt
-					#) | openssl req -new -x509 -key key.pem -out cert.pem -days 1050 >/dev/null 2>&1
-					#cat cert.pem key.pem >>/etc/stunnel/stunnel.pem
-					#rm key.pem cert.pem >/dev/null 2>&1
 					sed -i 's/ENABLED=0/ENABLED=1/g' /etc/default/stunnel4
-					cd /etc/stunnel && wget https://raw.githubusercontent.com/namnamir/SSH-Plus-Manager/main/Install/stunnel.pem && cd $HOME
+					cd /etc/stunnel
+					# Generate certificate dynamically instead of downloading
+					if [[ ! -f stunnel.pem ]]; then
+						openssl genrsa -out key.pem 2048 >/dev/null 2>&1
+						(
+						echo "BR"
+						echo "State"
+						echo "City"
+						echo "Organization"
+						echo "Organizational Unit"
+						echo "Common Name"
+						echo "Email"
+						) | openssl req -new -x509 -key key.pem -out cert.pem -days 1050 >/dev/null 2>&1
+						cat cert.pem key.pem > stunnel.pem
+						rm -f key.pem cert.pem >/dev/null 2>&1
+						chmod 600 stunnel.pem
+					fi
+					cd $HOME
 				}
 				fun_bar 'ssl_certif'
 				echo -e "\n\033[1;32mSTARTING SSL TUNNEL !\033[0m"
