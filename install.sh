@@ -185,7 +185,7 @@ echo ""
 red_code=$(get_color_code "red")
 reset_code=$(get_reset_code)
 echo -e "${red_code}═══════════════════════════════════════════════════════════════════════${reset_code}"
-print_header "       SSH Plus Manager v${INSTALL_VERSION}       "
+print_header "                SSH Plus Manager v${INSTALL_VERSION}                   "
 echo -e "${red_code}═══════════════════════════════════════════════════════════════════════${reset_code}"
 echo ""
 color_echo "  SSH Plus Manager provides network, system and user management tools." "yellow"
@@ -260,7 +260,7 @@ if [[ -f "$HOME/users.db" ]]; then
     blue_code=$(get_color_code "blue")
     reset_code=$(get_reset_code)
     echo ""
-    echo -e "${blue_code}═════════════════════════════════════════════════${reset_code}"
+    echo -e "${blue_code}═══════════════════════════════════════════════════════════════════════${reset_code}"
     echo ""
     color_echo "An existing user database (users.db) was found." "yellow"
     color_echo "Keep it and preserve connection limits, or create a new one?" "yellow"
@@ -268,7 +268,7 @@ if [[ -f "$HOME/users.db" ]]; then
     menu_option "1" "Keep current database" "red" "yellow"
     menu_option "2" "Create new database" "red" "yellow"
     echo ""
-    echo -e "${blue_code}═════════════════════════════════════════════════${reset_code}"
+    echo -e "${blue_code}═══════════════════════════════════════════════════════════════════════${reset_code}"
     echo ""
     color_echo_n "Choice [1-2]: " "green"
     read -r -e -i 1 optiondb

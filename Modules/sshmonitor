@@ -9,43 +9,76 @@ elif [[ -f "$(dirname "$0")/colors" ]]; then
     source "$(dirname "$0")/colors"
 fi
 
-clear
-if [[ -e /usr/lib/licence ]]; then
+[[ ! -e /usr/lib/licence ]] && exit 0
+
 database="/root/users.db"
-tmp_now=$(printf '%(%H%M%S)T\n')
-fun_drop () {
-port_dropbear=`ps aux | grep dropbear | awk NR==1 | awk '{print $17;}'`
-log=/var/log/auth.log
-loginsukses='Password auth succeeded'
-clear
-pids=`ps ax |grep dropbear |grep  " $port_dropbear" |awk -F" " '{print $1}'`
-for pid in $pids
-do
-    pidlogs=`grep $pid $log |grep "$loginsukses" |awk -F" " '{print $3}'`
-    i=0
-    for pidend in $pidlogs
-    do
-      let i=i+1
-    done
-    if [ $pidend ];then
-       login=`grep $pid $log |grep "$pidend" |grep "$loginsukses"`
-       PID=$pid
-       user=`echo $login |awk -F" " '{print $10}' | sed -r "s/'/ /g"`
-       waktu=`echo $login |awk -F" " '{print $2"-"$1,$3}'`
-       while [ ${#waktu} -lt 13 ]; do
-           waktu=$waktu" "
-       done
-       while [ ${#user} -lt 16 ]; do
-           user=$user" "
-       done
-       while [ ${#PID} -lt 8 ]; do
-           PID=$PID" "
-       done
-       echo "$user $PID $waktu"
-    fi
-done
+USAGEDIR="/var/lib/SSHPlus"
+USAGELOG="${USAGEDIR}/traffic.db"
+LASTSEENLOG="${USAGEDIR}/lastseen.db"
+mkdir -p "$USAGEDIR" 2>/dev/null
+
+# Parse "HH:MM:SS", "M:SS", "D-HH:MM:SS", or plain seconds to total seconds
+_time_to_sec() {
+	local t="${1:-0}"
+	[[ -z "$t" ]] && echo "0" && return
+	if [[ "$t" =~ ^([0-9]+)-([0-9]{2}):([0-9]{2}):([0-9]{2})$ ]]; then
+		echo $((${BASH_REMATCH[1]}*86400 + ${BASH_REMATCH[2]}*3600 + ${BASH_REMATCH[3]}*60 + ${BASH_REMATCH[4]}))
+		return
+	fi
+	if [[ "$t" =~ ^([0-9]+):([0-9]{2}):([0-9]{2})$ ]]; then
+		echo $((${BASH_REMATCH[1]}*3600 + ${BASH_REMATCH[2]}*60 + ${BASH_REMATCH[3]}))
+		return
+	fi
+	if [[ "$t" =~ ^([0-9]+):([0-9]{2})$ ]]; then
+		echo $((${BASH_REMATCH[1]}*60 + ${BASH_REMATCH[2]}))
+		return
+	fi
+	if [[ "$t" =~ ^[0-9]+$ ]]; then
+		echo "$t"
+		return
+	fi
+	echo "0"
 }
-# Format bytes as human-readable (K/M/G)
+
+# Format seconds to HH:MM:SS
+_sec_to_hms() {
+	awk -v s="${1:-0}" 'BEGIN{
+		h=int(s/3600); m=int((s%3600)/60); s=int(s%60)
+		printf "%02d:%02d:%02d", h, m, s
+	}'
+}
+
+# Read usage totals and last snapshot for a user. Output: total_rchar total_wchar total_sec last_rchar last_wchar last_etime_sec
+_read_usage() {
+	local u="$1" line
+	if [[ -f "$USAGELOG" ]]; then
+		line=$(grep -m1 "^${u} " "$USAGELOG" 2>/dev/null)
+		if [[ -n "$line" ]]; then
+			read -r _ tr tw ts lr lw le <<< "$line"
+			echo "${tr:-0} ${tw:-0} ${ts:-0} ${lr:-0} ${lw:-0} ${le:-0}"
+			return
+		fi
+	fi
+	echo "0 0 0 0 0 0"
+}
+
+tmp_now=$(printf '%(%H%M%S)T\n')
+fun_drop() {
+	port_dropbear=$(ps aux | grep dropbear | awk 'NR==1 {print $17;}')
+	log=/var/log/auth.log
+	loginsukses='Password auth succeeded'
+	pids=$(ps ax | grep dropbear | grep " $port_dropbear" | awk -F" " '{print $1}')
+	for pid in $pids; do
+		pidlogs=$(grep "$pid" "$log" 2>/dev/null | grep "$loginsukses" | awk -F" " '{print $3}')
+		for pidend in $pidlogs; do :; done
+		if [[ -n "$pidend" ]]; then
+			login=$(grep "$pid" "$log" 2>/dev/null | grep "$pidend" | grep "$loginsukses")
+			user=$(echo "$login" | awk -F" " '{print $10}' | sed -r "s/'/ /g")
+			echo "$user"
+		fi
+	done
+}
+
 _fmt_bytes() {
 	awk -v b="${1:-0}" 'BEGIN{
 		if(b>=1073741824) printf "%.1fG", b/1073741824
@@ -55,7 +88,6 @@ _fmt_bytes() {
 	}'
 }
 
-# Per-user I/O (rchar≈download, wchar≈upload) from /proc/<pid>/io
 _get_user_traffic() {
 	local u="$1" rchar=0 wchar=0
 	local pids
@@ -69,88 +101,231 @@ _get_user_traffic() {
 	echo "${rchar}:${wchar}"
 }
 
-# Use print_header function for colored header (with Traffic column)
-print_header " User         Status       Conn    Time       Down / Up   "
-echo ""
-echo ""
-_userlist=$(awk -F: '$3>=1000 {print $1}' /etc/passwd 2>/dev/null | grep -v nobody)
-for user in $_userlist; do
-        if [[ -f "$database" ]] && grep -qw "$user" "$database" 2>/dev/null; then
-            s2ssh="$(grep -w "$user" "$database" 2>/dev/null | cut -d' ' -f2)"
-        else
-            s2ssh="1"
-        fi
-        if [ "$(cat /etc/passwd| grep -w $user| wc -l)" = "1" ]; then
-          sqd="$(ps -u $user | grep sshd | wc -l)"
-        else
-          sqd=00
-        fi
-        [[ "$sqd" = "" ]] && sqd=0
-        if [[ -e /etc/openvpn/openvpn-status.log ]]; then
-          ovp="$(cat /etc/openvpn/openvpn-status.log | grep -E ,"$user", | wc -l)"
-        else
-          ovp=0
-        fi
-        if netstat -nltp|grep 'dropbear'> /dev/null;then
-          drop="$(fun_drop | grep "$user" | wc -l)"
-        else
-          drop=0
-        fi
-        cnx=$(($sqd + $drop))
-        conex=$(($cnx + $ovp))
-        if [[ $cnx -gt 0 ]]; then
-          tst="$(ps -o etime $(ps -u $user |grep sshd |awk 'NR==1 {print $1}')|awk 'NR==2 {print $1}')"
-          tst1=$(echo "$tst" | wc -c)
-        if [[ "$tst1" == "9" ]]; then 
-          timerr="$(ps -o etime $(ps -u $user |grep sshd |awk 'NR==1 {print $1}')|awk 'NR==2 {print $1}')"
-        else
-          timerr="$(echo "00:$tst")"
-        fi
-        elif [[ $ovp -gt 0 ]]; then
-          tmp2=$(printf '%(%H:%M:%S)T\n')
-          tmp1="$(grep -w "$user" /etc/openvpn/openvpn-status.log |awk '{print $4}'| head -1)"
-          [[ "$tmp1" = "" ]] && tmp1="00:00:00" && tmp2="00:00:00"
-          var1=`echo $tmp1 | cut -c 1-2`
-          var2=`echo $tmp1 | cut -c 4-5`
-          var3=`echo $tmp1 | cut -c 7-8`
-          var4=`echo $tmp2 | cut -c 1-2`
-          var5=`echo $tmp2 | cut -c 4-5`
-          var6=`echo $tmp2 | cut -c 7-8`
-          calc1=`echo $var1*3600 + $var2*60 + $var3 | bc`
-          calc2=`echo $var4*3600 + $var5*60 + $var6 | bc`
-          seg=$(($calc2 - $calc1))
-          min=$(($seg/60))
-          seg=$(($seg-$min*60))
-          hor=$(($min/60))
-          min=$(($min-$hor*60))
-          timerusr=`printf "%02d:%02d:%02d \n" $hor $min $seg;`
-          timerr=$(echo "$timerusr" | sed -e 's/[^0-9:]//ig' )
-        else
-          timerr="00:00:00"
-        fi
-        # Per-user traffic (↓=rchar, ↑=wchar from /proc/<pid>/io)
-        _io=$(_get_user_traffic "$user")
-        _down=$(_fmt_bytes "${_io%%:*}")
-        _up=$(_fmt_bytes "${_io##*:}")
-        traffic_str="↓$_down / ↑$_up"
+# Return status type for counting: online|offline|expired|expiring
+_user_status_type() {
+	local u="$1" conex="$2"
+	local exp
+	exp=$(chage -l "$u" 2>/dev/null | grep -E "Account expires" | cut -d' ' -f3-)
+	if [[ "$exp" != "never" ]] && [[ -n "$exp" ]]; then
+		local databr hoje
+		databr=$(date -d "$exp" +"%Y%m%d" 2>/dev/null) || true
+		hoje=$(date +"%Y%m%d")
+		if [[ -n "$databr" ]] && [[ "$hoje" -ge "$databr" ]]; then
+			echo "expired"
+			return
+		fi
+		local in7
+		in7=$(date -d "+7 days" +"%Y%m%d" 2>/dev/null)
+		if [[ -n "$databr" ]] && [[ "$in7" -ge "$databr" ]]; then
+			echo "expiring"
+			return
+		fi
+	fi
+	[[ "${conex:-0}" -gt 0 ]] && echo "online" || echo "offline"
+}
 
-        # Use color codes for status display (printf %b so escapes are interpreted)
-        yellow_code=$(get_color_code "yellow")
-        red_code=$(get_color_code "red")
-        green_code=$(get_color_code "green")
-        blue_code=$(get_color_code "blue")
-        reset_code=$(get_reset_code)
+# Return status icon: 🟢 online, 🔴 offline, 🟠 expired, 🟡 expiring soon (<7 days)
+_user_icon() {
+	local u="$1" conex="$2" st
+	st=$(_user_status_type "$u" "$conex")
+	case "$st" in
+		online)  echo "🟢" ;;
+		offline) echo "🔴" ;;
+		expired) echo "🟠" ;;
+		expiring) echo "🟡" ;;
+		*) echo "🔴" ;;
+	esac
+}
 
-        if [[ $conex -eq 0 ]]; then
-           status="${red_code}Offline ${yellow_code}       "
-        else
-           status="${green_code}Online${yellow_code}         "
-        fi
-        printf '%b%-17s%b%-8s%-10s%-14s%b\n' "$yellow_code" " $user" "$status" "$conex/$s2ssh" "$timerr" "$traffic_str" "$reset_code"
-        echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
+# Validity in days: N (left), "never", or "-N" (expired N days ago)
+_user_days_validity() {
+	local u="$1" exp
+	exp=$(chage -l "$u" 2>/dev/null | grep -E "Account expires" | cut -d' ' -f3-)
+	if [[ "$exp" = "never" ]] || [[ -z "$exp" ]]; then
+		echo "∞"
+		return
+	fi
+	local exp_sec now_sec diff
+	exp_sec=$(date -d "$exp" +%s 2>/dev/null) || { echo "?"; return; }
+	now_sec=$(date +%s)
+	diff=$(( (exp_sec - now_sec) / 86400 ))
+	echo "$diff"
+}
+
+# Stored password or "Null"
+_user_password() {
+	local u="$1"
+	if [[ -f "/etc/SSHPlus/senha/$u" ]] && [[ -s "/etc/SSHPlus/senha/$u" ]]; then
+		head -1 "/etc/SSHPlus/senha/$u" 2>/dev/null | tr -d '\r\n'
+	else
+		echo "Null"
+	fi
+}
+
+# Read last-seen epoch for user from file. Output: epoch or empty.
+_read_lastseen() {
+	local u="$1" f="$2"
+	[[ -z "$f" || ! -f "$f" ]] && echo "" && return
+	local line
+	line=$(grep -m1 "^${u} " "$f" 2>/dev/null)
+	[[ -n "$line" ]] && echo "${line##* }" || echo ""
+}
+
+# Format last connection: "now (0d)", "never", or "DD/MM HH:MM (Nd)"
+_format_last_seen() {
+	local epoch="$1" now_sec d dt
+	[[ -z "$epoch" || "$epoch" -le 0 ]] 2>/dev/null && echo "never" && return
+	now_sec=$(date +%s 2>/dev/null)
+	d=$(( (now_sec - epoch) / 86400 ))
+	dt=$(date -d "@$epoch" +"%d/%m %H:%M" 2>/dev/null)
+	[[ -z "$dt" ]] && dt="? ??:??"
+	echo "${dt} (${d}d)"
+}
+
+_do_display() {
+	clear
+	_userlist=$(awk -F: '$3>=1000 {print $1}' /etc/passwd 2>/dev/null | grep -v nobody)
+	_tmp_usage=$(mktemp 2>/dev/null || echo "/tmp/sshmon_usage_$$")
+	_tmp_lastseen=$(mktemp 2>/dev/null || echo "/tmp/sshmon_lastseen_$$")
+	[[ -f "$USAGELOG" ]] && cp "$USAGELOG" "$_tmp_usage" 2>/dev/null || : > "$_tmp_usage"
+	[[ -f "$LASTSEENLOG" ]] && cp "$LASTSEENLOG" "$_tmp_lastseen" 2>/dev/null || : > "$_tmp_lastseen"
+
+	n_total=0 n_online=0 n_offline=0 n_expired=0 n_expiring=0
+	sum_r=0 sum_w=0
+	declare -a _rows
+
+	for user in $_userlist; do
+		((n_total++)) || true
+		if [[ -f "$database" ]] && grep -qw "$user" "$database" 2>/dev/null; then
+			s2ssh="$(grep -w "$user" "$database" 2>/dev/null | cut -d' ' -f2)"
+		else
+			s2ssh="1"
+		fi
+		sqd=0
+		if grep -qw "$user" /etc/passwd 2>/dev/null; then
+			sqd=$(ps -u "$user" 2>/dev/null | grep -c sshd || echo 0)
+		fi
+		[[ -z "$sqd" ]] && sqd=0
+		ovp=0
+		[[ -e /etc/openvpn/openvpn-status.log ]] && ovp=$(grep -E ,"$user", /etc/openvpn/openvpn-status.log 2>/dev/null | wc -l)
+		drop=0
+		netstat -nltp 2>/dev/null | grep -q dropbear && drop=$(fun_drop | grep -c "^${user}$" 2>/dev/null || echo 0)
+		cnx=$((sqd + drop))
+		conex=$((cnx + ovp))
+
+		timerr="00:00:00"
+		if [[ $cnx -gt 0 ]]; then
+			tst=$(ps -o etime "$(ps -u "$user" 2>/dev/null | grep sshd | awk 'NR==1 {print $1}')" 2>/dev/null | awk 'NR==2 {print $1}')
+			[[ -z "$tst" ]] && tst="0"
+			if [[ "$tst" =~ ^[0-9]+-[0-9]+:[0-9]+:[0-9]+$ ]] || [[ "$tst" =~ ^[0-9]+:[0-9]+:[0-9]+$ ]]; then
+				timerr="$tst"
+			elif [[ "$tst" =~ ^[0-9]+:[0-9]+$ ]]; then
+				timerr="00:$tst"
+			else
+				timerr="00:00:$tst"
+			fi
+		elif [[ $ovp -gt 0 ]]; then
+			tmp2=$(printf '%(%H:%M:%S)T')
+			tmp1=$(grep -w "$user" /etc/openvpn/openvpn-status.log 2>/dev/null | awk '{print $4}' | head -1)
+			[[ -z "$tmp1" ]] && tmp1="00:00:00"
+			[[ -z "$tmp2" ]] && tmp2="00:00:00"
+			calc1=$(echo "$tmp1" | awk -F: '{print $1*3600+$2*60+$3}')
+			calc2=$(echo "$tmp2" | awk -F: '{print $1*3600+$2*60+$3}')
+			seg=$((${calc2:-0} - ${calc1:-0}))
+			[[ $seg -lt 0 ]] && seg=0
+			timerr=$(_sec_to_hms "$seg")
+		fi
+
+		_io=$(_get_user_traffic "$user")
+		cur_r="${_io%%:*}"
+		cur_w="${_io##*:}"
+		cur_down=$(_fmt_bytes "$cur_r")
+		cur_up=$(_fmt_bytes "$cur_w")
+		cur_etime_sec=$(_time_to_sec "$timerr")
+
+		# Update totals from log
+		read -r tot_r tot_w tot_sec last_r last_w last_etime < <(_read_usage "$user")
+		tot_r=${tot_r:-0}; tot_w=${tot_w:-0}; tot_sec=${tot_sec:-0}
+		last_r=${last_r:-0}; last_w=${last_w:-0}; last_etime=${last_etime:-0}
+
+		if [[ $conex -gt 0 ]]; then
+			# Add delta since last run (avoid negative on new session)
+			dr=$((cur_r - last_r)); dw=$((cur_w - last_w)); dt=$((cur_etime_sec - last_etime))
+			[[ $dr -lt 0 ]] && dr=$cur_r
+			[[ $dw -lt 0 ]] && dw=$cur_w
+			[[ $dt -lt 0 ]] && dt=$cur_etime_sec
+			tot_r=$((tot_r + dr)); tot_w=$((tot_w + dw)); tot_sec=$((tot_sec + dt))
+			last_r=$cur_r; last_w=$cur_w; last_etime=$cur_etime_sec
+		else
+			last_r=0; last_w=0; last_etime=0
+		fi
+
+		# Update log file (rewrite this user's line)
+		grep -v "^${user} " "$_tmp_usage" 2>/dev/null > "${_tmp_usage}.n"
+		mv "${_tmp_usage}.n" "$_tmp_usage" 2>/dev/null
+		echo "$user $tot_r $tot_w $tot_sec $last_r $last_w $last_etime" >> "$_tmp_usage"
+
+		tot_down=$(_fmt_bytes "$tot_r")
+		tot_up=$(_fmt_bytes "$tot_w")
+		tot_hms=$(_sec_to_hms "$tot_sec")
+		stype=$(_user_status_type "$user" "$conex")
+		case "$stype" in online)  ((n_online++));;  offline) ((n_offline++));;  expired) ((n_expired++));;  expiring) ((n_expiring++));; esac
+		sum_r=$((sum_r + tot_r))
+		sum_w=$((sum_w + tot_w))
+
+		icon=$(_user_icon "$user" "$conex")
+		days=$(_user_days_validity "$user")
+		pass=$(_user_password "$user")
+		[[ ${#pass} -gt 14 ]] && pass="${pass:0:12}.."
+		traffic_str="↓${cur_down}/↑${cur_up}"
+		total_str="↓${tot_down}/↑${tot_up}"
+
+		last_epoch=$(_read_lastseen "$user" "$_tmp_lastseen")
+		if [[ $conex -gt 0 ]]; then
+			last_str="now (0d)"
+			grep -v "^${user} " "$_tmp_lastseen" 2>/dev/null > "${_tmp_lastseen}.n"
+			mv "${_tmp_lastseen}.n" "$_tmp_lastseen" 2>/dev/null
+			echo "$user $(date +%s)" >> "$_tmp_lastseen"
+		else
+			last_str=$(_format_last_seen "$last_epoch")
+		fi
+
+		yellow_code=$(get_color_code "yellow")
+		blue_code=$(get_color_code "blue")
+		reset_code=$(get_reset_code)
+
+		line=$(printf '%b%s %-10s %-5s %-9s %-12s %-12s %-9s %-6s %-18s %-14s%b' \
+			"$yellow_code" "$icon" "$user" "$conex/$s2ssh" "$timerr" "$traffic_str" "$total_str" "$tot_hms" "$days" "$last_str" "$pass" "$reset_code")
+		_rows+=("$line")
+		_rows+=("${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}")
+	done
+
+	[[ -f "$_tmp_usage" ]] && mv "$_tmp_usage" "$USAGELOG" 2>/dev/null
+	rm -f "${_tmp_usage}.n" 2>/dev/null
+	[[ -f "$_tmp_lastseen" ]] && mv "$_tmp_lastseen" "$LASTSEENLOG" 2>/dev/null
+	rm -f "${_tmp_lastseen}.n" 2>/dev/null
+
+	# Top stats block
+	yellow_code=$(get_color_code "yellow")
+	green_code=$(get_color_code "green")
+	red_code=$(get_color_code "red")
+	white_code=$(get_color_code "white")
+	reset_code=$(get_reset_code)
+	sum_down=$(_fmt_bytes "$sum_r")
+	sum_up=$(_fmt_bytes "$sum_w")
+	echo -e "${yellow_code}Total: ${white_code}${n_total} users${yellow_code}  |  🟢 ${n_online}  🔴 ${n_offline}  🟠 ${n_expired}  🟡 ${n_expiring}  |  Total ↓${sum_down}  ↑${sum_up}${reset_code}"
+	echo ""
+	print_header " User      Conn  Time      Down/Up      Total↓/↑    TotalTime  Days   Last (datetime)  Password   "
+	echo ""
+	for row in "${_rows[@]}"; do
+		echo -e "$row"
+	done
+	echo ""
+	color_echo_n "Press Enter to return to menu (auto-refresh 10s)" "yellow"
+}
+
+# Auto-refresh loop: redraw every 10s, exit on Enter
+while true; do
+	_do_display
+	read -r -t 10 _ && break
 done
-    echo ""
-    color_echo_n "Press Enter to return to menu" "yellow"
-    read -r
-fi
-#exit

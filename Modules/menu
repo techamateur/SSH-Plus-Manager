@@ -444,7 +444,7 @@ menu() {
 		local updated=0 failed=0
 		# Format: "filename:destination_path" — destination is /bin or /etc/SSHPlus
 		local spec
-		for spec in "menu:/bin/menu" "alterarsenha:/bin/alterarsenha" "criarusuario:/bin/criarusuario" "expcleaner:/bin/expcleaner" "mudardata:/bin/mudardata" "remover:/bin/remover" "criarteste:/bin/criarteste" "alterarlimite:/bin/alterarlimite" "sshmonitor:/bin/sshmonitor" "infousers:/bin/infousers" "conexao:/bin/conexao" "multiport:/bin/multiport" "colors:/etc/SSHPlus/colors" "open.py:/etc/SSHPlus/open.py" "proxy.py:/etc/SSHPlus/proxy.py"; do
+		for spec in "menu:/bin/menu" "alterarsenha:/bin/alterarsenha" "criarusuario:/bin/criarusuario" "expcleaner:/bin/expcleaner" "mudardata:/bin/mudardata" "remover:/bin/remover" "criarteste:/bin/criarteste" "alterarlimite:/bin/alterarlimite" "sshmonitor:/bin/sshmonitor" "conexao:/bin/conexao" "multiport:/bin/multiport" "colors:/etc/SSHPlus/colors" "open.py:/etc/SSHPlus/open.py" "proxy.py:/etc/SSHPlus/proxy.py"; do
 			local fname="${spec%%:*}" dest="${spec##*:}"
 			local url="${repo_url}/Modules/${fname}" tmpf="${tmpdir}/${fname}"
 			if wget -q "$url" -O "$tmpf" 2>/dev/null || curl -sfL "$url" -o "$tmpf" 2>/dev/null; then
@@ -494,7 +494,7 @@ menu() {
 				# Remove modules (be careful not to remove system files)
 				rm -f /bin/alterarsenha /bin/criarusuario 2>/dev/null
 				rm -f /bin/expcleaner /bin/mudardata /bin/remover /bin/criarteste 2>/dev/null
-				rm -f /bin/sshmonitor /bin/alterarlimite /bin/infousers /bin/conexao 2>/dev/null
+				rm -f /bin/sshmonitor /bin/alterarlimite /bin/conexao 2>/dev/null
 				rm -f /bin/multiport 2>/dev/null
 				# Remove config directory (optional - keep user data)
 				# rm -rf /etc/SSHPlus 2>/dev/null
@@ -659,20 +659,21 @@ menu() {
 		printf "  ${red_code}Used ports:${white_code} %s${reset_code}\n" "$_ports"
 		printf "  ${red_code}Version:${white_code} %s${reset_code}\n" "$_ver_local"
 		if [[ -n "$_ver_update" ]]; then
-			echo -e "  ${yellow_code}[!] Update available: v${_ver_update} — use [20] UPDATE${reset_code}"
+			echo -e "  ${yellow_code}[!] Update available: v${_ver_update} — use [19] UPDATE SCRIPT${reset_code}"
 		fi
 		echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
 		echo ""
-		echo -e "${red_code}[${cyan_code}01${red_code}] ${white_code}• ${yellow_code}CREATE USER ${red_code}            [${cyan_code}11${red_code}] ${white_code}• ${yellow_code}SPEEDTEST ${reset_code}"
-		echo -e "${red_code}[${cyan_code}02${red_code}] ${white_code}• ${yellow_code}CREATE TEST USER ${red_code}       [${cyan_code}12${red_code}] ${white_code}• ${yellow_code}BANNER ${reset_code}"
-		echo -e "${red_code}[${cyan_code}03${red_code}] ${white_code}• ${yellow_code}REMOVE USER ${red_code}            [${cyan_code}13${red_code}] ${white_code}• ${yellow_code}VPS TRAFFIC ${reset_code}"
-		echo -e "${red_code}[${cyan_code}04${red_code}] ${white_code}• ${yellow_code}MONITOR ONLINE USERS ${red_code}   [${cyan_code}14${red_code}] ${white_code}• ${yellow_code}BACKUP ${reset_code}"
-		echo -e "${red_code}[${cyan_code}05${red_code}] ${white_code}• ${yellow_code}CHANGE EXPIRATION DATE ${red_code} [${cyan_code}15${red_code}] ${white_code}• ${yellow_code}VPS INFO${reset_code}"
-		echo -e "${red_code}[${cyan_code}06${red_code}] ${white_code}• ${yellow_code}CHANGE ACCOUNT LIMIT ${red_code}   [${cyan_code}16${red_code}] ${white_code}• ${yellow_code}MORE ${red_code}>${yellow_code}>${green_code}>${reset_code}"
-		echo -e "${red_code}[${cyan_code}07${red_code}] ${white_code}• ${yellow_code}CHANGE USER PASSWORD ${red_code}   [${cyan_code}00${red_code}] ${white_code}• ${yellow_code}EXIT ${green_code}<${yellow_code}<${red_code}<${reset_code}"
-		echo -e "${red_code}[${cyan_code}08${red_code}] ${white_code}• ${yellow_code}REMOVE EXPIRED USERS ${reset_code}"
-		echo -e "${red_code}[${cyan_code}09${red_code}] ${white_code}• ${yellow_code}USERS INFO${reset_code}"
-		echo -e "${red_code}[${cyan_code}10${red_code}] ${white_code}• ${yellow_code}MANAGE CONNECTIONS${reset_code}"
+		echo -e "${red_code}[${cyan_code}01${red_code}] ${white_code}• ${yellow_code}CREATE USER ${red_code}            [${cyan_code}10${red_code}] ${white_code}• ${yellow_code}SPEEDTEST ${reset_code}"
+		echo -e "${red_code}[${cyan_code}02${red_code}] ${white_code}• ${yellow_code}CREATE TEST USER ${red_code}       [${cyan_code}11${red_code}] ${white_code}• ${yellow_code}BANNER ${reset_code}"
+		echo -e "${red_code}[${cyan_code}03${red_code}] ${white_code}• ${yellow_code}REMOVE USER ${red_code}            [${cyan_code}12${red_code}] ${white_code}• ${yellow_code}VPS TRAFFIC ${reset_code}"
+		echo -e "${red_code}[${cyan_code}04${red_code}] ${white_code}• ${yellow_code}MONITOR ONLINE USERS ${red_code}   [${cyan_code}13${red_code}] ${white_code}• ${yellow_code}BACKUP ${reset_code}"
+		echo -e "${red_code}[${cyan_code}05${red_code}] ${white_code}• ${yellow_code}CHANGE EXPIRATION DATE ${red_code} [${cyan_code}14${red_code}] ${white_code}• ${yellow_code}VPS INFO ${reset_code}"
+		echo -e "${red_code}[${cyan_code}06${red_code}] ${white_code}• ${yellow_code}CHANGE ACCOUNT LIMIT ${red_code}   [${cyan_code}15${red_code}] ${white_code}• ${yellow_code}REBOOT SYSTEM ${reset_code}"
+		echo -e "${red_code}[${cyan_code}07${red_code}] ${white_code}• ${yellow_code}CHANGE USER PASSWORD ${red_code}   [${cyan_code}16${red_code}] ${white_code}• ${yellow_code}RESTART SERVICES ${reset_code}"
+		echo -e "${red_code}[${cyan_code}08${red_code}] ${white_code}• ${yellow_code}REMOVE EXPIRED USERS ${red_code}    [${cyan_code}17${red_code}] ${white_code}• ${yellow_code}ROOT PASSWORD ${reset_code}"
+		echo -e "${red_code}[${cyan_code}09${red_code}] ${white_code}• ${yellow_code}MANAGE CONNECTIONS ${red_code}     [${cyan_code}18${red_code}] ${white_code}• ${yellow_code}AUTO RUN ${reset_code}"
+		echo -e "${red_code}                                    [${cyan_code}19${red_code}] ${white_code}• ${yellow_code}UPDATE SCRIPT ${red_code}   [${cyan_code}20${red_code}] ${white_code}• ${yellow_code}REMOVE SCRIPT ${reset_code}"
+		echo -e "                                    ${red_code}[${cyan_code}00${red_code}] ${white_code}• ${yellow_code}EXIT ${green_code}<${yellow_code}<${red_code}<${reset_code}"
 		echo ""
 		echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
 		echo ""
@@ -733,20 +734,14 @@ menu() {
 			[[ $_ret -eq 99 ]] && exit 0
 			;;
 		9 | 09)
-			clear
-			infousers
-			_ret=$?
-			[[ $_ret -eq 99 ]] && exit 0
-			;;
-		10)
 			conexao
 			exit 0
 			;;
-		11)
+		10)
 			clear
 			velocity
 			;;
-		12)
+		11)
 			clear
 			# Banner function - display IP and system info
 			if [[ -f /etc/IP ]] && [[ -s /etc/IP ]]; then
@@ -791,41 +786,41 @@ menu() {
 			color_echo "Banner will be displayed when users connect via SSH" "cyan"
 			sleep 3
 			;;
-		13)
+		12)
 			clear
 			color_echo "TO EXIT CLICK CTRL + C" "green"
 			sleep 4
 			nload
 			;;
-		14)
+		13)
 			clear
 			userbackup
 			;;
-		15)
+		14)
 			clear
 			detalhes
 			;;
-		16)
+		15)
 			clear
 			reiniciarsistema
 			;;
-		17)
+		16)
 			clear
 			reiniciarservicos
 			sleep 5
 			;;
-		18)
+		17)
 			clear
 			senharoot
 			sleep 5
 			;;
-		19)
+		18)
 			autoexec
 			;;
-		20)
+		19)
 			attscript
 			;;
-		21)
+		20)
 			clear
 			delscript
 			;;
