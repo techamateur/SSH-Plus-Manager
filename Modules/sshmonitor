@@ -9,7 +9,7 @@ elif [[ -f "$(dirname "$0")/colors" ]]; then
     source "$(dirname "$0")/colors"
 fi
 
-[[ ! -e /usr/lib/licence ]] && exit 0
+[[ ! -e /usr/lib/sshplus ]] && exit 0
 
 database="/root/users.db"
 USAGEDIR="/var/lib/SSHPlus"
@@ -124,14 +124,14 @@ _user_status_type() {
 	[[ "${conex:-0}" -gt 0 ]] && echo "online" || echo "offline"
 }
 
-# Return status icon: 🟢 online, 🔴 offline, 🟠 expired, 🟡 expiring soon (<7 days)
+# Return status icon: 🟢 online, 🔴 offline, ⚪ expired, 🟡 expiring soon (<7 days)
 _user_icon() {
 	local u="$1" conex="$2" st
 	st=$(_user_status_type "$u" "$conex")
 	case "$st" in
 		online)  echo "🟢" ;;
 		offline) echo "🔴" ;;
-		expired) echo "🟠" ;;
+		expired) echo "⚪" ;;
 		expiring) echo "🟡" ;;
 		*) echo "🔴" ;;
 	esac
