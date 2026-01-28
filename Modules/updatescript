@@ -1,0 +1,97 @@
+#!/bin/bash
+# updatescript – update manager files from repository (menu option [17] UPDATE SCRIPT).
+
+# Load color helpers (install path vs dev path)
+if [[ -f /etc/SSHPlus/colors ]]; then
+	source /etc/SSHPlus/colors
+elif [[ -f /bin/colors ]]; then
+	source /bin/colors
+elif [[ -f "$(dirname "$0")/colors" ]]; then
+	source "$(dirname "$0")/colors"
+fi
+
+print_header "           UPDATE SCRIPT                "
+echo ""
+
+repo_url="https://raw.githubusercontent.com/namnamir/SSH-Plus-Manager/main"
+[[ -f /etc/SSHPlus/repo_url ]] && [[ -s /etc/SSHPlus/repo_url ]] && repo_url=$(tr -d '\r\n' < /etc/SSHPlus/repo_url)
+
+local_ver=$(cat /etc/SSHPlus/version 2>/dev/null || cat /bin/version 2>/dev/null)
+[[ -z "$local_ver" ]] && local_ver="0"
+remote_ver=$(wget -qO- --timeout=5 "$repo_url/version" 2>/dev/null | head -1 | tr -d '\r\n')
+[[ -z "$remote_ver" ]] && remote_ver=$(curl -sfL --max-time 5 "$repo_url/version" 2>/dev/null | head -1 | tr -d '\r\n')
+[[ -z "$remote_ver" ]] && remote_ver="$local_ver"
+
+need_update=""
+if [[ -n "$remote_ver" ]] && [[ "$local_ver" != "$remote_ver" ]]; then
+	latest=$(printf '%s\n%s' "$local_ver" "$remote_ver" | sort -V 2>/dev/null | tail -1)
+	[[ "$latest" = "$remote_ver" ]] && need_update=1
+fi
+
+color_echo "  Current version: v${local_ver}" "cyan"
+color_echo "  Latest version:  v${remote_ver}" "cyan"
+echo ""
+
+if [[ -z "$need_update" ]]; then
+	success_msg "Already up to date."
+	sleep 2
+	exec /bin/menu
+	exit 0
+fi
+
+warning_msg "Update available. This will download all manager files from the repository and overwrite local copies."
+color_echo_n "Continue? [y/N]: " "yellow"
+read -r confirm
+if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+	color_echo "Update cancelled." "green"
+	sleep 2
+	exec /bin/menu
+	exit 0
+fi
+
+[[ -d /etc/SSHPlus ]] || mkdir -p /etc/SSHPlus
+tmpdir="/tmp/sshplus_update_$$"
+mkdir -p "$tmpdir" || { error_msg "Cannot create temp directory."; sleep 2; exec /bin/menu; exit 1; }
+
+color_echo "Fetching files from repository..." "green"
+echo ""
+
+updated=0 failed=0
+for spec in "menu:/bin/menu" "changepassword:/bin/changepassword" "createuser:/bin/createuser" "expiredusers:/bin/expiredusers" "changeexpiration:/bin/changeexpiration" "removeuser:/bin/removeuser" "changelimit:/bin/changelimit" "sshmonitor:/bin/sshmonitor" "connections:/bin/connections" "multiport:/bin/multiport" "userinfo:/bin/userinfo" "rootpassword:/bin/rootpassword" "bannersetup:/bin/bannersetup" "vpstraffic:/bin/vpstraffic" "vpsinfo:/bin/vpsinfo" "rebootsystem:/bin/rebootsystem" "restartservices:/bin/restartservices" "userbackup:/bin/userbackup" "speedtest:/bin/speedtest" "autorun:/bin/autorun" "updatescript:/bin/updatescript" "removescript:/bin/removescript" "colors:/etc/SSHPlus/colors" "open.py:/etc/SSHPlus/open.py" "proxy.py:/etc/SSHPlus/proxy.py"; do
+	fname="${spec%%:*}"
+	dest="${spec##*:}"
+	url="${repo_url}/Modules/${fname}"
+	tmpf="${tmpdir}/${fname}"
+	if wget -q "$url" -O "$tmpf" 2>/dev/null || curl -sfL "$url" -o "$tmpf" 2>/dev/null; then
+		if [[ -s "$tmpf" ]]; then
+			if cp -f "$tmpf" "$dest" 2>/dev/null; then
+				chmod +x "$dest" 2>/dev/null
+				((updated++))
+				color_echo "  OK: $fname -> $dest" "green"
+			else
+				((failed++))
+				color_echo "  FAIL: $fname (cannot write $dest)" "red"
+			fi
+		else
+			((failed++))
+			color_echo "  SKIP: $fname (empty)" "yellow"
+		fi
+	else
+		((failed++))
+		color_echo "  FAIL: $fname (download failed)" "red"
+	fi
+done
+
+rm -rf "$tmpdir" 2>/dev/null
+
+if [[ $updated -gt 0 ]]; then
+	echo "$remote_ver" > /etc/SSHPlus/version 2>/dev/null
+	echo "$remote_ver" > /bin/version 2>/dev/null
+	success_msg "Update finished: $updated file(s) updated. Version set to v${remote_ver}."
+fi
+echo ""
+[[ $failed -gt 0 ]] && warning_msg "$failed file(s) could not be updated (missing in repo or permission error)."
+[[ $updated -eq 0 ]] && [[ $failed -eq 0 ]] && info_msg "No files were changed."
+color_echo "To use the new menu, run: menu" "cyan"
+sleep 3
+exec /bin/menu

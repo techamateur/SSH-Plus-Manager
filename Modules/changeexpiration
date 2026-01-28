@@ -1,23 +1,20 @@
 #!/bin/bash
+# changeexpiration – change user account expiration date (menu option [04] EXPIRATION DATE).
 
-# Load color utility functions
-if [[ -f "/etc/SSHPlus/colors" ]]; then
-    source /etc/SSHPlus/colors
-elif [[ -f "/bin/colors" ]]; then
-    source /bin/colors
+# Load color helpers (install path vs dev path)
+if [[ -f /etc/SSHPlus/colors ]]; then
+	source /etc/SSHPlus/colors
+elif [[ -f /bin/colors ]]; then
+	source /bin/colors
 elif [[ -f "$(dirname "$0")/colors" ]]; then
-    source "$(dirname "$0")/colors"
+	source "$(dirname "$0")/colors"
 fi
 
-tput setaf 7
-tput setab 4
-tput bold
-printf '%33s%s%-12s\n' "Change expiration date"
-tput sgr0
+print_header "   Change expiration date   "
 echo ""
 color_echo " LIST OF USERS AND EXPIRY DATE:" "yellow"
 echo ""
-tput setaf 7 ; tput bold 
+tput setaf 7 ; tput bold
 database="/root/users.db"
 # Keep users.db in sync: remove entries for users that no longer exist in /etc/passwd
 _existing=$(awk -F: '$3>=1000 {print $1}' /etc/passwd 2>/dev/null | grep -v nobody)
@@ -30,61 +27,39 @@ done < "$database" 2>/dev/null
 rm -f "$_tmp" 2>/dev/null
 # List only users that currently exist in /etc/passwd
 list_user=$(awk -F: '$3>=1000 {print $1}' /etc/passwd 2>/dev/null | grep -v nobody)
-i=0
-i=0
+idx=0
 unset _userPass
-while read user; do
-	i=$(expr $i + 1)
-	_oP=$i
-	[[ $i == [1-9] ]] && i=0$i && oP+=" 0$i"
-	expire="$(chage -l $user | grep -E "Account expires" | cut -d ' ' -f3-)"
-	if [[ $expire == "never" ]]
-	then
-		# Use color codes for "never" case
-		red_code=$(get_color_code "red")
-		cyan_code=$(get_color_code "cyan")
-		white_code=$(get_color_code "white")
-		green_code=$(get_color_code "green")
-		yellow_code=$(get_color_code "yellow")
-		reset_code=$(get_reset_code)
+while read -r user; do
+	((idx++)) || true
+	[[ $idx -le 9 ]] && i=0$idx || i=$idx
+	expire=$(chage -l "$user" 2>/dev/null | grep -E "Account expires" | cut -d' ' -f3-)
+	red_code=$(get_color_code "red")
+	cyan_code=$(get_color_code "cyan")
+	white_code=$(get_color_code "white")
+	green_code=$(get_color_code "green")
+	yellow_code=$(get_color_code "yellow")
+	reset_code=$(get_reset_code)
+	if [[ "$expire" == "never" ]]; then
 		echo -e "${red_code}[${cyan_code}$i${red_code}] ${white_code}- ${green_code}$user     ${yellow_code}00/00/0000   S/DATE${reset_code}"
 	else
-		databr="$(date -d "$expire" +"%Y%m%d")"
-		hoje="$(date -d today +"%Y%m%d")"
-		if [ $hoje -ge $databr ]
-		then
-			# Use color codes for expired users
-			red_code=$(get_color_code "red")
-			cyan_code=$(get_color_code "cyan")
-			white_code=$(get_color_code "white")
-			green_code=$(get_color_code "green")
-			reset_code=$(get_reset_code)
-			_user="${red_code}[${cyan_code}$i${red_code}] ${white_code}- ${green_code}$user${white_code}${reset_code}"
-			datanormal="$(date -d"$expire" '+%d/%m/%Y')"
+		exp_ymd=$(date -d "$expire" +"%Y%m%d" 2>/dev/null)
+		today_ymd=$(date +"%Y%m%d" 2>/dev/null)
+		exp_fmt=$(date -d "$expire" '+%d/%m/%Y' 2>/dev/null)
+		_user="${red_code}[${cyan_code}$i${red_code}] ${white_code}- ${green_code}$user${white_code}${reset_code}"
+		if [[ -n "$exp_ymd" && -n "$today_ymd" ]] && [[ "$today_ymd" -ge "$exp_ymd" ]]; then
 			expired="${red_code}WON${reset_code}"
-			echo -e "${_user}  ${datanormal}  ${expired}"
+			echo -e "${_user}  ${exp_fmt}  ${expired}"
 			echo "exp" > /tmp/exp
 		else
-			# Use color codes for valid users
-			red_code=$(get_color_code "red")
-			cyan_code=$(get_color_code "cyan")
-			white_code=$(get_color_code "white")
-			green_code=$(get_color_code "green")
-			yellow_code=$(get_color_code "yellow")
-			reset_code=$(get_reset_code)
-			_user="${red_code}[${cyan_code}$i${red_code}] ${white_code}- ${green_code}$user${white_code}${reset_code}"
-			datanormal="$(date -d"$expire" '+%d/%m/%Y')"
 			ative="${green_code}VALID${reset_code}"
-			echo -e "${_user}  ${datanormal}  ${ative}"
+			echo -e "${_user}  ${exp_fmt}  ${ative}"
 		fi
 	fi
-	_userPass+="\n${_oP}:${user}"
+	_userPass+="\n${i}:${user}"
 done <<< "${list_user}"
-tput sgr0
 echo ""
-if [ -a /tmp/exp ]
-then
-	rm /tmp/exp
+if [[ -f /tmp/exp ]]; then
+	rm -f /tmp/exp
 fi
 num_user=$(awk -F: '$3>=1000 {print $1}' /etc/passwd | grep -v nobody | wc -l)
 echo ""
@@ -113,7 +88,7 @@ then
 	error_msg "Error, Username empty or invalid!"
 	exit 1
 fi
-usuario=$(echo -e "${_userPass}" | grep -E "\b$option\b" | cut -d: -f2)
+usuario=$(echo -e "${_userPass}" | awk -v o="$option" -F: 'NF>=2 && $1+0==o+0 {print $2; exit}')
 if [[ -z $usuario ]]
 then
 	echo ""

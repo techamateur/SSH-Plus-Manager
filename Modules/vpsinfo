@@ -1,0 +1,82 @@
+#!/bin/bash
+# vpsinfo – VPS/system details.
+# Shows hostname, IPs, OS, kernel, uptime, RAM/CPU/disk, network stats, listening ports,
+# and connection counts (SSH, Dropbear, OpenVPN).
+
+# Load color helpers (install path vs dev path)
+if [[ -f /etc/SSHPlus/colors ]]; then
+	source /etc/SSHPlus/colors
+elif [[ -f /bin/colors ]]; then
+	source /bin/colors
+elif [[ -f "$(dirname "$0")/colors" ]]; then
+	source "$(dirname "$0")/colors"
+fi
+
+print_header "              VPS INFO                 "
+echo ""
+g=$(get_color_code "green")
+w=$(get_color_code "white")
+bl=$(get_color_code "blue")
+reset=$(get_reset_code)
+
+# --- Gather system info (single run, no redundant commands) ---
+
+_hn=$(hostname 2>/dev/null || echo "N/A")
+if [[ -f /etc/IP ]] && [[ -s /etc/IP ]]; then
+	_ip4=$(cat /etc/IP)
+else
+	_ip4=$(hostname -I 2>/dev/null | awk '{print $1}')
+	[[ -z "$_ip4" ]] && _ip4="N/A"
+fi
+_ip6=$(hostname -I 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i~/:/) print $i}' | head -1)
+[[ -z "$_ip6" ]] && _ip6="N/A"
+if [[ -f /etc/os-release ]]; then
+	_os=$(grep -E ^PRETTY_NAME= /etc/os-release 2>/dev/null | cut -d'"' -f2)
+else
+	_os=$(cut -d' ' -f1,2 /etc/issue.net 2>/dev/null | head -1)
+fi
+[[ -z "$_os" ]] && _os="N/A"
+_kern=$(uname -r 2>/dev/null || echo "N/A")
+_up=$(uptime -p 2>/dev/null || echo "N/A")
+_ram=$(free -h 2>/dev/null | awk '/^Mem:/{print $2}')
+_ramuse=$(free -m 2>/dev/null | awk 'NR==2{printf "%.1f%%", $3*100/$2}')
+[[ -z "$_ram" ]] && _ram="N/A"
+_cpu=$(nproc 2>/dev/null || grep -c processor /proc/cpuinfo 2>/dev/null)
+_cpuuse=$(top -bn1 2>/dev/null | awk '/Cpu/ { printf "%.1f%%", 100 - $8 }')
+[[ -z "$_cpu" ]] && _cpu="N/A"
+_disk_used=$(df -h / 2>/dev/null | awk 'NR==2{print $3}')
+_disk_total=$(df -h / 2>/dev/null | awk 'NR==2{print $2}')
+_disk_pct=$(df -h / 2>/dev/null | awk 'NR==2{print $5}')
+_ports=$(ss -tuln 2>/dev/null | awk '/LISTEN/ {gsub(/.*:/,"",$5); print $5}' | sort -nu | tr '\n' ' ')
+[[ -z "$_ports" ]] && _ports=$(netstat -tuln 2>/dev/null | awk '/LISTEN/ {gsub(/.*:/,"",$4); print $4}' | sort -nu | tr '\n' ' ')
+[[ -z "$_ports" ]] && _ports="N/A"
+_net_if=$(ip route 2>/dev/null | grep default | awk '{print $5}' | head -1)
+if [[ -n "$_net_if" ]] && [[ -f /proc/net/dev ]]; then
+	_rx_mb=$(grep -F "${_net_if}" /proc/net/dev 2>/dev/null | awk '{printf "%.2f", $2/1024/1024}')
+	_tx_mb=$(grep -F "${_net_if}" /proc/net/dev 2>/dev/null | awk '{printf "%.2f", $10/1024/1024}')
+	[[ -n "$_rx_mb" ]] && [[ -n "$_tx_mb" ]] && _net_stats="↓${_rx_mb}MB ↑${_tx_mb}MB"
+fi
+[[ -z "$_net_stats" ]] && _net_stats="N/A"
+_ssh=$(ps -x 2>/dev/null | grep -c '[s]shd.*priv' || echo "0")
+_drop=$(ps aux 2>/dev/null | grep -c '[d]ropbear' || echo "0")
+_drop=$((_drop > 0 ? _drop - 1 : 0))
+_open="N/A"
+[[ -e /etc/openvpn/openvpn-status.log ]] && _open=$(grep -c "10.8.0" /etc/openvpn/openvpn-status.log 2>/dev/null || echo "0")
+_cons=$((_ssh + _drop))
+[[ "$_open" != "N/A" ]] && _cons=$((_cons + _open))
+
+echo -e "${bl}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset}"
+echo -e "  ${g}Hostname:${w}    $_hn${reset}"
+echo -e "  ${g}IPv4:${w}        $_ip4${reset}"
+echo -e "  ${g}IPv6:${w}        $_ip6${reset}"
+echo -e "  ${g}OS:${w}          $_os${reset}"
+echo -e "  ${g}Kernel:${w}      $_kern${reset}"
+echo -e "  ${g}Uptime:${w}      $_up${reset}"
+echo -e "  ${g}RAM:${w}         $_ram (${_ramuse} used)${reset}"
+echo -e "  ${g}CPU:${w}         $_cpu cores (${_cpuuse} used)${reset}"
+echo -e "  ${g}Disk (/):${w}    $_disk_used / $_disk_total (${_disk_pct})${reset}"
+echo -e "  ${g}Network:${w}     $_net_stats${reset}"
+echo -e "  ${g}Listening:${w}   $_ports${reset}"
+echo -e "${bl}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset}"
+echo -e "  ${g}Connections:${w} SSH/Dropbear: $_ssh / $_drop   OpenVPN: $_open   Total: $_cons${reset}"
+echo -e "${bl}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset}"

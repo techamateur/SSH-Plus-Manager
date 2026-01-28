@@ -1,0 +1,21 @@
+#!/bin/bash
+# vpstraffic – VPS traffic monitoring via nload (menu option [11] VPS TRAFFIC).
+# Exits with message if nload is not installed.
+
+if [[ -f /etc/SSHPlus/colors ]]; then
+	source /etc/SSHPlus/colors
+elif [[ -f /bin/colors ]]; then
+	source /bin/colors
+elif [[ -f "$(dirname "$0")/colors" ]]; then
+	source "$(dirname "$0")/colors"
+fi
+
+if ! command -v nload &>/dev/null; then
+	error_msg "nload is not installed. Install with: apt install nload"
+	sleep 3
+	exit 1
+fi
+clear
+color_echo "To exit, press Ctrl+C" "green"
+sleep 2
+exec nload

@@ -1,9 +1,10 @@
 #!/bin/bash
+# menu – main SSH Plus Manager loop; sources colors and runs the main menu.
 
-# Load color utility functions
-if [[ -f "/etc/SSHPlus/colors" ]]; then
+# Load color helpers (install path vs dev path)
+if [[ -f /etc/SSHPlus/colors ]]; then
 	source /etc/SSHPlus/colors
-elif [[ -f "/bin/colors" ]]; then
+elif [[ -f /bin/colors ]]; then
 	source /bin/colors
 elif [[ -f "$(dirname "$0")/colors" ]]; then
 	source "$(dirname "$0")/colors"
@@ -70,489 +71,6 @@ ensure_fetch_deps() {
 
 # Main menu function
 menu() {
-	# Speedtest function - tests server network speed
-	velocity() {
-		# Wait function - shows progress for speedtest operation
-		wait() {
-			local cmd1="$1"
-			local cmd2="$2"
-
-			(
-				[[ -e $HOME/fim ]] && rm $HOME/fim
-				[[ ! -d /etc/SSHPlus ]] && rm -rf /bin/menu
-				${cmd1} >/dev/null 2>&1
-				${cmd2} >/dev/null 2>&1
-				touch $HOME/fim
-			) >/dev/null 2>&1 &
-
-			tput civis
-			# Use color functions for progress bar
-			yellow_code=$(get_color_code "yellow")
-			red_code=$(get_color_code "red")
-			white_code=$(get_color_code "white")
-			green_code=$(get_color_code "green")
-			reset_code=$(get_reset_code)
-
-			echo -ne "  ${yellow_code}WAIT ${white_code}- ${yellow_code}["
-			while true; do
-				for ((i = 0; i < 18; i++)); do
-					echo -ne "${red_code}#"
-					sleep 0.1s
-				done
-				[[ -e $HOME/fim ]] && rm $HOME/fim && break
-				echo -e "${yellow_code}]"
-				sleep 1s
-				tput cuu1
-				tput dl1
-				echo -ne "  ${yellow_code}WAIT ${white_code}- ${yellow_code}["
-			done
-			echo -e "${yellow_code}]${white_code} -${green_code} OK !${white_code}${reset_code}"
-			tput cnorm
-		}
-
-		# Speedtest execution function - uses speedtest-cli only
-		fun_tst() {
-			local out_png="$HOME/speed_png" out_down="$HOME/speed_down" out_upl="$HOME/speed_upl" out_lnk="$HOME/speed_lnk" out_err="$HOME/speed_err"
-			echo "N/A" >"$out_png"
-			echo "N/A" >"$out_down"
-			echo "N/A" >"$out_upl"
-			echo "N/A" >"$out_lnk"
-			: >"$out_err"
-
-			if ! command -v speedtest-cli >/dev/null 2>&1; then
-				echo "SPEEDTEST_CLI_MISSING" >"$out_lnk"
-				return 1
-			fi
-			local raw
-			raw=$(speedtest-cli --simple 2>"$out_err") || true
-			if [[ -z "$raw" ]]; then
-				echo "SPEEDTEST_CLI_FAIL" >"$out_lnk"
-				return 1
-			fi
-			echo "$raw" | awk -F': ' '/Ping/{gsub(/ ms/,"",$2); printf "%.2f ms\n", $2}' >"$out_png"
-			echo "$raw" | awk -F': ' '/Download/{gsub(/ *Mbit\/s/,"",$2); printf "%.2f Mbps\n", $2+0}' >"$out_down"
-			echo "$raw" | awk -F': ' '/Upload/{gsub(/ *Mbit\/s/,"",$2); printf "%.2f Mbps\n", $2+0}' >"$out_upl"
-			echo "speedtest-cli" >"$out_lnk"
-			[[ -s "$out_png" ]] || echo "N/A" >"$out_png"
-			[[ -s "$out_down" ]] || echo "N/A" >"$out_down"
-			[[ -s "$out_upl" ]] || echo "N/A" >"$out_upl"
-			return 0
-		}
-		echo ""
-		color_echo "   TESTING SERVER SPEED !" "green"
-		echo ""
-		wait 'fun_tst'
-		echo ""
-
-		# Read parsed values from files
-		if [[ -f $HOME/speed_lnk ]] && [[ -s $HOME/speed_lnk ]]; then
-			lnk=$(cat $HOME/speed_lnk)
-		else
-			lnk="N/A"
-		fi
-		if [[ "$lnk" == "SPEEDTEST_CLI_MISSING" ]]; then
-			echo ""
-			error_msg "speedtest-cli is required but not installed."
-			# Try to auto-install if running as root
-			if [[ "$(id -u)" -eq 0 ]]; then
-				color_echo "Attempting to install speedtest-cli..." "yellow"
-				echo ""
-				if python3 -m pip install speedtest-cli 2>&1 || pip3 install speedtest-cli 2>&1; then
-					success_msg "speedtest-cli installed. Run [09] SPEEDTEST again."
-				elif apt-get update -qq 2>/dev/null && apt-get install -y speedtest-cli 2>&1; then
-					success_msg "speedtest-cli installed (apt). Run [09] SPEEDTEST again."
-				else
-					error_msg "Auto-install failed. Errors shown above."
-					color_echo "Install manually:  pip3 install speedtest-cli   or   apt install speedtest-cli" "cyan"
-				fi
-			else
-				color_echo "Install with:  pip3 install speedtest-cli   or   apt install speedtest-cli" "yellow"
-			fi
-			echo ""
-			color_echo_n "Press ENTER to return to menu..." "yellow"
-			read -r
-			rm -f $HOME/speed_png $HOME/speed_down $HOME/speed_upl $HOME/speed_lnk $HOME/speed_err 2>/dev/null
-			return 0
-		fi
-		if [[ "$lnk" == "SPEEDTEST_CLI_FAIL" ]]; then
-			echo ""
-			error_msg "speedtest-cli ran but produced no output (network or config issue)."
-			if [[ -f $HOME/speed_err ]] && [[ -s $HOME/speed_err ]]; then
-				color_echo "Error output:" "yellow"
-				sed 's/^/  /' "$HOME/speed_err" | head -20
-				echo ""
-			fi
-			color_echo "Check connectivity to speedtest.net and try again." "cyan"
-			echo ""
-			color_echo_n "Press ENTER to return to menu..." "yellow"
-			read -r
-			rm -f $HOME/speed_png $HOME/speed_down $HOME/speed_upl $HOME/speed_lnk $HOME/speed_err 2>/dev/null
-			return 0
-		fi
-		if [[ -f $HOME/speed_png ]] && [[ -s $HOME/speed_png ]]; then
-			png=$(cat $HOME/speed_png)
-		else
-			png="N/A"
-		fi
-		if [[ -f $HOME/speed_down ]] && [[ -s $HOME/speed_down ]]; then
-			down=$(cat $HOME/speed_down)
-		else
-			down="N/A"
-		fi
-		if [[ -f $HOME/speed_upl ]] && [[ -s $HOME/speed_upl ]]; then
-			upl=$(cat $HOME/speed_upl)
-		else
-			upl="N/A"
-		fi
-
-		# Use color codes for speedtest display
-		blue_code=$(get_color_code "blue")
-		green_code=$(get_color_code "green")
-		white_code=$(get_color_code "white")
-		cyan_code=$(get_color_code "cyan")
-		reset_code=$(get_reset_code)
-		echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
-		color_echo_n "PING (LATENCY):" "green"
-		color_echo "$png" "white"
-		color_echo_n "DOWNLOAD:" "green"
-		color_echo "$down" "white"
-		color_echo_n "UPLOAD:" "green"
-		color_echo "$upl" "white"
-		color_echo_n "LINK: " "green"
-		color_echo "$lnk" "cyan"
-		echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
-		echo ""
-		color_echo_n "Press ENTER to return to menu..." "yellow"
-		read -r
-		rm -rf $HOME/speed $HOME/speed_png $HOME/speed_down $HOME/speed_upl $HOME/speed_lnk $HOME/speed_err 2>/dev/null
-	}
-	# Toggle auto-execution of menu on login
-	autoexec() {
-		if grep "menu;" /etc/profile >/dev/null 2>&1; then
-			clear
-			color_echo "DISABLING AUTO RUN" "green"
-			offautmenu() {
-				sed -i '/menu;/d' /etc/profile
-			}
-			echo ""
-			fun_bar 'offautmenu'
-			echo ""
-			color_echo "AUTO EXECUTION OFF!" "red"
-			sleep 1.5s
-			menu
-		else
-			clear
-			color_echo "ACTIVATING AUTO RUN" "green"
-			autmenu() {
-				grep -v "^menu;" /etc/profile >/tmp/tmpass && mv /tmp/tmpass /etc/profile
-				echo "menu;" >>/etc/profile
-			}
-			echo ""
-			fun_bar 'autmenu'
-			echo ""
-			color_echo "AUTO RUN ON!" "green"
-			sleep 1.5s
-			menu
-		fi
-	}
-
-	# Reboot the system
-	reiniciarsistema() {
-		print_header "            REBOOT SYSTEM              "
-		echo ""
-		warning_msg "This will reboot the system!"
-		color_echo_n "Are you sure? [y/N]: " "yellow"
-		read -r confirm
-		if [[ "$confirm" =~ ^[Yy]$ ]]; then
-			color_echo "Rebooting in 3 seconds..." "red"
-			sleep 3
-			reboot
-		else
-			color_echo "Reboot cancelled." "green"
-			sleep 2
-			menu
-		fi
-	}
-
-	# Restart SSH and related services
-	reiniciarservicos() {
-		print_header "         RESTART SERVICES            "
-		echo ""
-		color_echo "Restarting SSH service..." "green"
-		if command -v systemctl >/dev/null 2>&1; then
-			systemctl restart ssh.service 2>/dev/null || systemctl restart sshd.service 2>/dev/null
-		else
-			service ssh restart 2>/dev/null || service sshd restart 2>/dev/null
-		fi
-		success_msg "Services restarted successfully!"
-		sleep 2
-	}
-
-	# VPS / system details - OS and connections overview
-	detalhes() {
-		print_header "              VPS INFO                 "
-		echo ""
-		local g r w y c bl reset
-		g=$(get_color_code "green")
-		r=$(get_color_code "red")
-		w=$(get_color_code "white")
-		y=$(get_color_code "yellow")
-		c=$(get_color_code "cyan")
-		bl=$(get_color_code "blue")
-		reset=$(get_reset_code)
-		local _hn _ip4 _ip6 _os _kern _up _ram _ramuse _cpu _cpuuse _disk_used _disk_total _disk_pct _ports
-		_hn=$(hostname 2>/dev/null || echo "N/A")
-		if [[ -f /etc/IP ]] && [[ -s /etc/IP ]]; then
-			_ip4=$(cat /etc/IP)
-		else
-			_ip4=$(hostname -I 2>/dev/null | awk '{print $1}')
-			[[ -z "$_ip4" ]] && _ip4="N/A"
-		fi
-		_ip6=$(hostname -I 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i~/:/) print $i}' | head -1)
-		[[ -z "$_ip6" ]] && _ip6="N/A"
-		if [[ -f /etc/os-release ]]; then
-			_os=$(grep -E ^PRETTY_NAME= /etc/os-release 2>/dev/null | cut -d'"' -f2)
-		else
-			_os=$(cut -d' ' -f1,2 /etc/issue.net 2>/dev/null | head -1)
-		fi
-		[[ -z "$_os" ]] && _os="N/A"
-		_kern=$(uname -r 2>/dev/null || echo "N/A")
-		_up=$(uptime -p 2>/dev/null || echo "N/A")
-		_ram=$(free -h 2>/dev/null | awk '/^Mem:/{print $2}')
-		_ramuse=$(free -m 2>/dev/null | awk 'NR==2{printf "%.1f%%", $3*100/$2}')
-		[[ -z "$_ram" ]] && _ram="N/A"
-		_cpu=$(nproc 2>/dev/null || grep -c processor /proc/cpuinfo 2>/dev/null)
-		_cpuuse=$(top -bn1 2>/dev/null | awk '/Cpu/ { printf "%.1f%%", 100 - $8 }')
-		[[ -z "$_cpu" ]] && _cpu="N/A"
-		_disk_used=$(df -h / 2>/dev/null | awk 'NR==2{print $3}')
-		_disk_total=$(df -h / 2>/dev/null | awk 'NR==2{print $2}')
-		_disk_pct=$(df -h / 2>/dev/null | awk 'NR==2{print $5}')
-		_ports=$(ss -tuln 2>/dev/null | awk '/LISTEN/ {gsub(/.*:/,"",$5); print $5}' | sort -nu | tr '\n' ' ')
-		[[ -z "$_ports" ]] && _ports=$(netstat -tuln 2>/dev/null | awk '/LISTEN/ {gsub(/.*:/,"",$4); print $4}' | sort -nu | tr '\n' ' ')
-		[[ -z "$_ports" ]] && _ports="N/A"
-		local _net_if _rx_mb _tx_mb _net_stats
-		_net_if=$(ip route 2>/dev/null | grep default | awk '{print $5}' | head -1)
-		if [[ -n "$_net_if" ]] && [[ -f /proc/net/dev ]]; then
-			_rx_mb=$(grep -F "${_net_if}" /proc/net/dev 2>/dev/null | awk '{printf "%.2f", $2/1024/1024}')
-			_tx_mb=$(grep -F "${_net_if}" /proc/net/dev 2>/dev/null | awk '{printf "%.2f", $10/1024/1024}')
-			[[ -n "$_rx_mb" ]] && [[ -n "$_tx_mb" ]] && _net_stats="↓${_rx_mb}MB ↑${_tx_mb}MB"
-		fi
-		[[ -z "$_net_stats" ]] && _net_stats="N/A"
-		local _ssh _drop _open _cons
-		_ssh=$(ps -x 2>/dev/null | grep -c '[s]shd.*priv' || echo "0")
-		_drop=$(ps aux 2>/dev/null | grep -c '[d]ropbear' || echo "0")
-		_drop=$((_drop > 0 ? _drop - 1 : 0))
-		_open="N/A"
-		[[ -e /etc/openvpn/openvpn-status.log ]] && _open=$(grep -c "10.8.0" /etc/openvpn/openvpn-status.log 2>/dev/null || echo "0")
-		_cons=$((_ssh + _drop))
-		[[ "$_open" != "N/A" ]] && _cons=$((_cons + _open))
-		echo -e "${bl}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset}"
-		echo -e "  ${g}Hostname:${w}    $_hn${reset}"
-		echo -e "  ${g}IPv4:${w}        $_ip4${reset}"
-		echo -e "  ${g}IPv6:${w}        $_ip6${reset}"
-		echo -e "  ${g}OS:${w}          $_os${reset}"
-		echo -e "  ${g}Kernel:${w}      $_kern${reset}"
-		echo -e "  ${g}Uptime:${w}      $_up${reset}"
-		echo -e "  ${g}RAM:${w}         $_ram (${_ramuse} used)${reset}"
-		echo -e "  ${g}CPU:${w}         $_cpu cores (${_cpuuse} used)${reset}"
-		echo -e "  ${g}Disk (/):${w}    $_disk_used / $_disk_total (${_disk_pct})${reset}"
-		echo -e "  ${g}Network:${w}     $_net_stats${reset}"
-		echo -e "  ${g}Listening:${w}   $_ports${reset}"
-		echo -e "${bl}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset}"
-		echo -e "  ${g}Connections:${w} SSH/Dropbear: $_ssh / $_drop   OpenVPN: $_open   Total: $_cons${reset}"
-		echo -e "${bl}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset}"
-	}
-
-	# Backup usernames, passwords, limits, expiration dates
-	userbackup() {
-		print_header "            USER BACKUP                 "
-		echo ""
-		local backup_dir="${HOME:-/root}"
-		local stamp=$(date +%Y%m%d_%H%M%S)
-		local out="${backup_dir}/sshplus_backup_${stamp}.txt"
-		local db="/root/users.db"
-		local pass_dir="/etc/SSHPlus/senha"
-
-		{
-			echo "# SSHPlus user backup - $stamp"
-			echo "# Format: username:password:limit:expiration"
-			echo ""
-			local list_user
-			list_user=$(awk -F: '$3>=1000 {print $1}' /etc/passwd 2>/dev/null | grep -v nobody)
-			if [[ -z "$list_user" ]]; then
-				echo "# No users found."
-				exit 0
-			fi
-			while read -r u; do
-				[[ -z "$u" ]] && continue
-				local pass="N/A" lim="1" exp="never"
-				[[ -f "${pass_dir}/${u}" ]] && pass=$(cat "${pass_dir}/${u}" 2>/dev/null)
-				[[ -f "$db" ]] && grep -q "^${u}[[:space:]]" "$db" 2>/dev/null && lim=$(grep -w "$u" "$db" 2>/dev/null | cut -d' ' -f2)
-				exp=$(chage -l "$u" 2>/dev/null | grep -E "Account expires" | cut -d' ' -f3-)
-				[[ -z "$exp" ]] && exp="never"
-				echo "${u}:${pass}:${lim}:${exp}"
-			done <<<"$list_user"
-		} >"$out" 2>/dev/null
-
-		if [[ -f "$out" ]] && [[ -s "$out" ]]; then
-			success_msg "Backup saved to: $out"
-			color_echo "File: $out" "cyan"
-		else
-			error_msg "Backup file could not be created."
-		fi
-		echo ""
-		sleep 2
-	}
-
-	# Change root password
-	senharoot() {
-		print_header "         CHANGE ROOT PASSWORD           "
-		echo ""
-		color_echo_n "Enter new root password: " "yellow"
-		read -s password1
-		echo ""
-		color_echo_n "Confirm new root password: " "yellow"
-		read -s password2
-		echo ""
-
-		if [[ -z "$password1" ]]; then
-			error_msg "Password cannot be empty!"
-			sleep 2
-			return 1
-		fi
-
-		if [[ "$password1" != "$password2" ]]; then
-			error_msg "Passwords do not match!"
-			sleep 2
-			return 1
-		fi
-
-		if [[ ${#password1} -lt 4 ]]; then
-			error_msg "Password must be at least 4 characters!"
-			sleep 2
-			return 1
-		fi
-
-		echo "root:$password1" | chpasswd
-		success_msg "Root password changed successfully!"
-		sleep 2
-	}
-
-	# Update script: check version, then fetch all manager files from repository and copy to local paths
-	attscript() {
-		print_header "           UPDATE SCRIPT                "
-		echo ""
-		local repo_url
-		if [[ -f /etc/SSHPlus/repo_url ]] && [[ -s /etc/SSHPlus/repo_url ]]; then
-			repo_url=$(tr -d '\r\n' < /etc/SSHPlus/repo_url)
-		else
-			repo_url="https://raw.githubusercontent.com/namnamir/SSH-Plus-Manager/main"
-		fi
-		local local_ver remote_ver
-		local_ver=$(cat /etc/SSHPlus/version 2>/dev/null || cat /bin/version 2>/dev/null)
-		[[ -z "$local_ver" ]] && local_ver="0"
-		remote_ver=$(wget -qO- --timeout=5 "$repo_url/version" 2>/dev/null | head -1 | tr -d '\r\n')
-		[[ -z "$remote_ver" ]] && remote_ver=$(curl -sfL --max-time 5 "$repo_url/version" 2>/dev/null | head -1 | tr -d '\r\n')
-		[[ -z "$remote_ver" ]] && remote_ver="$local_ver"
-		local need_update=""
-		if [[ -n "$remote_ver" ]] && [[ "$local_ver" != "$remote_ver" ]]; then
-			local latest; latest=$(printf '%s\n%s' "$local_ver" "$remote_ver" | sort -V 2>/dev/null | tail -1)
-			[[ "$latest" = "$remote_ver" ]] && need_update=1
-		fi
-		color_echo "  Current version: v${local_ver}" "cyan"
-		color_echo "  Latest version:  v${remote_ver}" "cyan"
-		echo ""
-		if [[ -z "$need_update" ]]; then
-			success_msg "Already up to date."
-			sleep 2
-			menu
-			return 0
-		fi
-		warning_msg "Update available. This will download all manager files from the repository and overwrite local copies."
-		color_echo_n "Continue? [y/N]: " "yellow"
-		read -r confirm
-		if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-			color_echo "Update cancelled." "green"
-			sleep 2
-			menu
-			return 0
-		fi
-		[[ -d /etc/SSHPlus ]] || mkdir -p /etc/SSHPlus
-		local tmpdir="/tmp/sshplus_update_$$"
-		mkdir -p "$tmpdir" || { error_msg "Cannot create temp directory."; sleep 2; menu; return 1; }
-		color_echo "Fetching files from repository..." "green"
-		echo ""
-		local updated=0 failed=0
-		# Format: "filename:destination_path" — destination is /bin or /etc/SSHPlus
-		local spec
-		for spec in "menu:/bin/menu" "alterarsenha:/bin/alterarsenha" "criarusuario:/bin/criarusuario" "expcleaner:/bin/expcleaner" "mudardata:/bin/mudardata" "remover:/bin/remover" "alterarlimite:/bin/alterarlimite" "sshmonitor:/bin/sshmonitor" "conexao:/bin/conexao" "multiport:/bin/multiport" "colors:/etc/SSHPlus/colors" "open.py:/etc/SSHPlus/open.py" "proxy.py:/etc/SSHPlus/proxy.py"; do
-			local fname="${spec%%:*}" dest="${spec##*:}"
-			local url="${repo_url}/Modules/${fname}" tmpf="${tmpdir}/${fname}"
-			if wget -q "$url" -O "$tmpf" 2>/dev/null || curl -sfL "$url" -o "$tmpf" 2>/dev/null; then
-				if [[ -s "$tmpf" ]]; then
-					cp -f "$tmpf" "$dest" 2>/dev/null && { chmod +x "$dest" 2>/dev/null; ((updated++)); color_echo "  OK: $fname -> $dest" "green"; } || { ((failed++)); color_echo "  FAIL: $fname (cannot write $dest)" "red"; }
-				else
-					((failed++))
-					color_echo "  SKIP: $fname (empty)" "yellow"
-				fi
-			else
-				((failed++))
-				color_echo "  FAIL: $fname (download failed)" "red"
-			fi
-		done
-		rm -rf "$tmpdir" 2>/dev/null
-		if [[ $updated -gt 0 ]]; then
-			echo "$remote_ver" > /etc/SSHPlus/version 2>/dev/null
-			echo "$remote_ver" > /bin/version 2>/dev/null
-			success_msg "Update finished: $updated file(s) updated. Version set to v${remote_ver}."
-		fi
-		echo ""
-		if [[ $failed -gt 0 ]]; then
-			warning_msg "$failed file(s) could not be updated (missing in repo or permission error)."
-		fi
-		if [[ $updated -eq 0 ]] && [[ $failed -eq 0 ]]; then
-			info_msg "No files were changed."
-		fi
-		color_echo "To use the new menu, run: menu" "cyan"
-		sleep 3
-		menu
-	}
-
-	# Remove script (uninstall)
-	delscript() {
-		print_header "          REMOVE SCRIPT                 "
-		echo ""
-		error_msg "This will remove the SSH Plus Manager installation!"
-		color_echo_n "Are you absolutely sure? [y/N]: " "red"
-		read -r confirm
-		if [[ "$confirm" =~ ^[Yy]$ ]]; then
-			color_echo_n "Type 'DELETE' to confirm: " "red"
-			read -r confirm2
-			if [[ "$confirm2" == "DELETE" ]]; then
-				color_echo "Removing installation..." "yellow"
-				# Remove main command
-				rm -f /bin/menu 2>/dev/null
-				# Remove modules (be careful not to remove system files)
-				rm -f /bin/alterarsenha /bin/criarusuario 2>/dev/null
-				rm -f /bin/expcleaner /bin/mudardata /bin/remover 2>/dev/null
-				rm -f /bin/sshmonitor /bin/alterarlimite /bin/conexao 2>/dev/null
-				rm -f /bin/multiport 2>/dev/null
-				# Remove config directory (optional - keep user data)
-				# rm -rf /etc/SSHPlus 2>/dev/null
-				success_msg "Script removed. Some configuration files may remain in /etc/SSHPlus"
-				sleep 3
-				exit 0
-			else
-				color_echo "Removal cancelled." "green"
-				sleep 2
-				menu
-			fi
-		else
-			color_echo "Removal cancelled." "green"
-			sleep 2
-			menu
-		fi
-	}
 	# Main menu loop - runs until user exits
 	while true; do
 		green_code=$(get_color_code "green")
@@ -698,6 +216,37 @@ menu() {
 			[[ "$_latest" = "$_ver_remote" ]] && _ver_update="$_ver_remote"
 		fi
 
+		# Compact header: user traffic sum, uptime, percent parsing
+		_user_rx=0 _user_tx=0
+		[[ -f /var/lib/SSHPlus/traffic.db ]] && while read -r _ _r _w; do
+			_user_rx=$((_user_rx + ${_r:-0})); _user_tx=$((_user_tx + ${_w:-0}))
+		done < <(awk '{print $1,$2,$3}' /var/lib/SSHPlus/traffic.db 2>/dev/null)
+		_user_down=$(awk -v b="${_user_rx:-0}" 'BEGIN{if(b>=1073741824) printf "%.1fG", b/1073741824; else if(b>=1048576) printf "%.1fM", b/1048576; else if(b>=1024) printf "%.0fK", b/1024; else printf "%dB", b+0}')
+		_user_up=$(awk -v b="${_user_tx:-0}" 'BEGIN{if(b>=1073741824) printf "%.1fG", b/1073741824; else if(b>=1048576) printf "%.1fM", b/1048576; else if(b>=1024) printf "%.0fK", b/1024; else printf "%dB", b+0}')
+		_sys_down=$(awk "BEGIN {printf \"%.0fM\", ${_rx_bytes:-0}/1024/1024}" 2>/dev/null)
+		_sys_up=$(awk "BEGIN {printf \"%.0fM\", ${_tx_bytes:-0}/1024/1024}" 2>/dev/null)
+		[[ -z "$_sys_down" || "$_sys_down" = "0M" ]] && _sys_down="${_rx_mb:-0}M"
+		[[ -z "$_sys_up" || "$_sys_up" = "0M" ]] && _sys_up="${_tx_mb:-0}M"
+		_uptime_short=$(awk '{s=$1; d=int(s/86400); h=int((s%86400)/3600); m=int((s%3600)/60); if(d>0) printf "%dd %02d:%02d", d,h,m; else printf "%02d:%02d", h,m}' /proc/uptime 2>/dev/null)
+		[[ -z "$_uptime_short" ]] && _uptime_short=$(uptime -p 2>/dev/null | sed 's/up //;s/ days\?,/d /;s/ hours\?,/:/;s/ minutes\?.*//;s/ //g')
+		_n_expiring=0
+		for _u in $(awk -F: '$3>=1000 {print $1}' /etc/passwd 2>/dev/null | grep -v nobody); do
+			_exp=$(chage -l "$_u" 2>/dev/null | grep "Account expires" | cut -d' ' -f3-)
+			[[ "$_exp" = "never" || -z "$_exp" ]] && continue
+			_ed=$(date -d "$_exp" +%s 2>/dev/null); _now=$(date +%s)
+			_diff=$(( (_ed - _now) / 86400 ))
+			[[ $_diff -le 7 && $_diff -gt 0 ]] && ((_n_expiring++)) || true
+		done
+		_ram_total_short=$(free -m 2>/dev/null | awk 'NR==2{print $2}')
+		[[ -n "$_ram_total_short" ]] && _ram_total_short="${_ram_total_short}M" || _ram_total_short=$(free -h 2>/dev/null | awk '/^Mem:/{print $2}')
+		_ram_pct=$(echo "${_usor}" | sed 's/%//' | awk '{printf "%.0f", $1+0}')
+		_cpu_pct=$(echo "${_usop}" | sed 's/%//' | awk '{printf "%.0f", $1+0}')
+		_disk_pct=$(echo "${_disk_percent}" | sed 's/%//' | awk '{printf "%.0f", $1+0}')
+		_ram_pct=${_ram_pct:-0}; _cpu_pct=${_cpu_pct:-0}; _disk_pct=${_disk_pct:-0}
+		_pct_color() {
+			local n="${1:-0}"; [[ "$n" -lt 60 ]] 2>/dev/null && { get_color_code green; return; }; [[ "$n" -lt 85 ]] 2>/dev/null && { get_color_code yellow; return; }; get_color_code red;
+		}
+
 		clear
 
 		blue_code=$(get_color_code "blue")
@@ -707,22 +256,31 @@ menu() {
 		yellow_code=$(get_color_code "yellow")
 		cyan_code=$(get_color_code "cyan")
 		reset_code=$(get_reset_code)
-		echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
-		print_header_red "            ⇱ SSH PLUS MANAGER v${_ver_local} ⇲            "
-		echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
-		printf "  ${red_code}IPv4:${white_code} %s${reset_code}\n" "$_ipv4"
-		printf "  ${red_code}IPv6:${white_code} %s${reset_code}\n" "$_ipv6"
-		printf "  ${red_code}Hostname:${white_code} %s${reset_code}\n" "$_hostname_display"
-		printf "  ${red_code}RAM:${white_code} %s (%s used)${reset_code}\n" "$(free -h | grep -i mem | awk '{print $2}')" "$_usor"
-		printf "  ${red_code}CPU:${white_code} %s cores, %s used${reset_code}\n" "$_core" "$_usop"
-		printf "  ${red_code}Disk:${white_code} %s / %s (%s)${reset_code}\n" "$_disk_used" "$_disk_total" "$_disk_percent"
-		printf "  ${red_code}Network:${white_code} %s${reset_code}\n" "$_net_stats"
-		printf "  ${red_code}Used ports:${white_code} %s${reset_code}\n" "$_ports"
-		printf "  ${red_code}Version:${white_code} %s${reset_code}\n" "$_ver_local"
+		_line="${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
+		# Row 1: RAM / CPU / Disk with percent colors (<60 green, 60–84 yellow, >=85 red)
+		printf " %b🧠 RAM %s %b(%s)%b   %b⚙ CPU %sc %b(%s)%b   %b💾 Disk %s %b(%s)%b\n" \
+			"$cyan_code" "$_ram_total_short" "$(_pct_color "$_ram_pct")" "${_usor}" "$reset_code" \
+			"$cyan_code" "$_core" "$(_pct_color "$_cpu_pct")" "${_usop}" "$reset_code" \
+			"$cyan_code" "$_disk_total" "$(_pct_color "$_disk_pct")" "$_disk_percent" "$reset_code"
+		echo -e "$_line"
+		# Row 2: hostname, IP
+		printf " %b🖥 %-20s %b🌍 %s %b|%b %s\n" "$white_code" "$_hostname_display" "$cyan_code" "$_ipv4" "$white_code" "$cyan_code" "$_ipv6"
+		# Row 3: Sys vs User traffic
+		printf " %b🌐 Sys ↓%s ↑%s       %b📊 User ↓%s ↑%s  \n" "$cyan_code" "$_sys_down" "$_sys_up" "$cyan_code" "$_user_down" "$_user_up"
+		echo ""
+		# Row 4: ports
+		printf " %b🔌 %s\n" "$yellow_code" "$_ports"
+		echo -e "$_line"
+		# Row 5: users (👤 total 🟢on 🔴off ⚪exp 🟡expiring), uptime, version
+		_n_offline=$((_tuser - ${_onli:-0} - ${_expuser:-0}))
+		[[ $_n_offline -lt 0 ]] && _n_offline=0
+		_expiring_label="$_n_expiring"; [[ $_n_expiring -gt 0 ]] && _expiring_label="$_n_expiring (exp<7d)"
+		printf " %b👤 %s   %b🟢%s %b🔴%s %b⚪%s %b🟡%s%b      %b⏱ Uptime: %s   v%s\n" \
+			"$yellow_code" "$_tuser" "$green_code" "$_onli" "$red_code" "$_n_offline" "$white_code" "$_expuser" "$yellow_code" "$_expiring_label" "$reset_code" "$cyan_code" "$_uptime_short" "$_ver_local"
+		echo -e "$_line"
 		if [[ -n "$_ver_update" ]]; then
-			echo -e "  ${yellow_code}[!] Update available: v${_ver_update} — use [18] UPDATE SCRIPT${reset_code}"
+			printf " %b[!] Update available: v%s — use [18] UPDATE SCRIPT%b\n" "$yellow_code" "$_ver_update" "$reset_code"
 		fi
-		echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
 		echo ""
 		echo -e "${red_code}[${cyan_code}01${red_code}] ${white_code}• ${yellow_code}CREATE USER ${red_code}     [${cyan_code}09${red_code}] ${white_code}• ${yellow_code}SPEEDTEST ${reset_code}"
 		echo -e "${red_code}[${cyan_code}02${red_code}] ${white_code}• ${yellow_code}REMOVE USER ${red_code}     [${cyan_code}10${red_code}] ${white_code}• ${yellow_code}BANNER ${reset_code}"
@@ -748,14 +306,14 @@ menu() {
 		case "$x" in
 		1 | 01)
 			clear
-			criarusuario
+			createuser
 			echo ""
 			color_echo_n "Press ENTER to return to menu (copy the user info above first)..." "yellow"
 			read -r
 			;;
 		2 | 02)
 			clear
-			remover
+			removeuser
 			_ret=$?
 			[[ $_ret -eq 99 ]] && exit 0
 			sleep 3
@@ -766,89 +324,45 @@ menu() {
 			;;
 		4 | 04)
 			clear
-			mudardata
+			changeexpiration
 			_ret=$?
 			[[ $_ret -eq 99 ]] && exit 0
 			sleep 3
 			;;
 		5 | 05)
 			clear
-			alterarlimite
+			changelimit
 			_ret=$?
 			[[ $_ret -eq 99 ]] && exit 0
 			sleep 3
 			;;
 		6 | 06)
 			clear
-			alterarsenha
+			changepassword
 			_ret=$?
 			[[ $_ret -eq 99 ]] && exit 0
 			sleep 3
 			;;
 		7 | 07)
 			clear
-			expcleaner
+			expiredusers
 			_ret=$?
 			[[ $_ret -eq 99 ]] && exit 0
 			;;
 		8 | 08)
-			conexao
+			connections
 			exit 0
 			;;
 		9 | 09)
 			clear
-			velocity
+			speedtest
 			;;
 		10)
 			clear
-			# Banner function - display IP and system info
-			if [[ -f /etc/IP ]] && [[ -s /etc/IP ]]; then
-				IP=$(cat /etc/IP)
-			else
-				# Try to get IP from various sources
-				IP=$(hostname -I | awk '{print $1}' 2>/dev/null)
-				[[ -z "$IP" ]] && IP=$(wget -qO- ipv4.icanhazip.com 2>/dev/null)
-				[[ -z "$IP" ]] && IP=$(curl -s ipv4.icanhazip.com 2>/dev/null)
-				[[ -z "$IP" ]] && IP="N/A"
-			fi
-
-			print_header "            BANNER SETUP             "
-			echo ""
-			color_echo "Current IP Address: $IP" "green"
-			echo ""
-			color_echo_n "Enter banner text (or press ENTER to use default): " "yellow"
-			read -r banner_text
-
-			if [[ -z "$banner_text" ]]; then
-				banner_text="SSHPLUS MANAGER - IP: $IP"
-			fi
-
-			# Create banner file
-			echo "$banner_text" >/etc/banner
-			echo "$banner_text" >/etc/issue.net
-
-			# Update sshd_config to show banner
-			if ! grep -q "^Banner" /etc/ssh/sshd_config 2>/dev/null; then
-				echo "Banner /etc/banner" >>/etc/ssh/sshd_config
-			fi
-
-			# Restart SSH to apply banner
-			if command -v systemctl >/dev/null 2>&1; then
-				systemctl restart ssh.service 2>/dev/null || systemctl restart sshd.service 2>/dev/null
-			else
-				service ssh restart 2>/dev/null || service sshd restart 2>/dev/null
-			fi
-
-			success_msg "Banner updated successfully!"
-			echo ""
-			color_echo "Banner will be displayed when users connect via SSH" "cyan"
-			sleep 3
+			bannersetup
 			;;
 		11)
-			clear
-			color_echo "TO EXIT CLICK CTRL + C" "green"
-			sleep 4
-			nload
+			vpstraffic
 			;;
 		12)
 			clear
@@ -856,31 +370,31 @@ menu() {
 			;;
 		13)
 			clear
-			detalhes
+			vpsinfo
 			;;
 		14)
 			clear
-			reiniciarsistema
+			rebootsystem
 			;;
 		15)
 			clear
-			reiniciarservicos
+			restartservices
 			sleep 5
 			;;
 		16)
 			clear
-			senharoot
+			rootpassword
 			sleep 5
 			;;
 		17)
-			autoexec
+			autorun
 			;;
 		18)
-			attscript
+			updatescript
 			;;
 		19)
 			clear
-			delscript
+			exec removescript
 			;;
 		0 | 00)
 			# Exit completely

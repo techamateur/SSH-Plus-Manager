@@ -331,12 +331,12 @@ echo ""
 #  wget          – download files, version, IP; used by install.sh, Install/list, menu
 #  curl          – fallback download; IP/version fetch; used by install, menu, speedtest
 #  bc            – calculator in scripts (e.g. traffic/stats)
-#  screen        – run proxy.py, open.py, autostart; used by conexao, Install/list
-#  nano          – edit hosts, openvpn config; used by criarusuario, conexao
+#  screen        – run proxy.py, open.py, autostart; used by connections, Install/list
+#  nano          – edit hosts, openvpn config; used by createuser, connections
 #  unzip         – extract archives; used by Install/list and other modules
-#  zip           – create OVPN zip bundles; used by criarusuario
+#  zip           – create OVPN zip bundles; used by createuser
 #  lsof          – list open files / connections; used by monitoring
-#  net-tools     – provides netstat; used by sshmonitor, conexao, Install/list
+#  net-tools     – provides netstat; used by sshmonitor, connections, Install/list
 #  dos2unix      – fix line endings in scripts
 #  nload         – [11] VPS TRAFFIC in menu
 #  jq            – JSON; used by Install/list and any JSON config

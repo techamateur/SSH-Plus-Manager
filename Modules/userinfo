@@ -1,0 +1,85 @@
+#!/bin/bash
+# userinfo – list users with password, limit, validity (menu option [05] USER INFO).
+
+# Load color helpers (install path vs dev path)
+if [[ -f /etc/SSHPlus/colors ]]; then
+	source /etc/SSHPlus/colors
+elif [[ -f /bin/colors ]]; then
+	source /bin/colors
+elif [[ -f "$(dirname "$0")/colors" ]]; then
+	source "$(dirname "$0")/colors"
+fi
+
+database="/root/users.db"
+clear
+menu_option "1" "VIEW USER LIST" "red" "yellow"
+menu_option "0" "BACK TO MENU" "red" "yellow"
+menu_option "00" "EXIT" "red" "yellow"
+echo ""
+color_echo_n "Select option " "green"
+color_echo_n "[1/0/00]: " "white"
+read -r resp
+[[ "$resp" == "0" || "$resp" == "00" ]] && exit 0
+[[ -n "$resp" && "$resp" != "1" ]] && { echo ""; error_msg "Invalid option!"; sleep 2; exit 1; }
+clear
+print_header " User                 Password               Limit         Validity "
+echo ""
+yellow_code=$(get_color_code "yellow")
+white_code=$(get_color_code "white")
+green_code=$(get_color_code "green")
+blue_code=$(get_color_code "blue")
+reset_code=$(get_reset_code)
+_userlist=$(awk -F: '$3>=1000 {print $1}' /etc/passwd 2>/dev/null | grep -v nobody | sort)
+while read -r user; do
+	[[ -z "$user" ]] && continue
+	if [[ -f "$database" ]] && grep -qw "$user" "$database" 2>/dev/null; then
+		lim=$(grep -w "$user" "$database" 2>/dev/null | cut -d' ' -f2)
+	else
+		lim="1"
+	fi
+	if [[ -f /etc/SSHPlus/senha/"$user" ]]; then
+		senha=$(head -1 /etc/SSHPlus/senha/"$user" 2>/dev/null | tr -d '\r\n')
+	else
+		senha="Null"
+	fi
+	exp_raw=$(chage -l "$user" 2>/dev/null | awk -F: '/Account expires/{print $2}' | xargs)
+	if [[ "$exp_raw" == "never" ]] || [[ -z "$exp_raw" ]]; then
+		data="${yellow_code}Never${reset_code}"
+	else
+		exp_ymd=$(date -d "$exp_raw" +"%Y%m%d" 2>/dev/null)
+		today_ymd=$(date +"%Y%m%d")
+		if [[ -n "$exp_ymd" ]] && [[ "$today_ymd" -ge "$exp_ymd" ]]; then
+			data="$(get_color_code "red")EXPIRED${reset_code}"
+		else
+			exp_fmt=$(date -d "$exp_raw" '+%Y-%m-%d' 2>/dev/null)
+			now_fmt=$(date +%Y-%m-%d)
+			days=$(( ($(date -d "$exp_fmt" +%s 2>/dev/null) - $(date -d "$now_fmt" +%s)) / 86400 ))
+			data="${days} ${white_code}Days${reset_code}"
+		fi
+	fi
+	printf "%b %-15s%b%-13s%b%-10s%b%b\n" "${yellow_code}" "$user" "${white_code}" "$senha" "${white_code}" "$lim" "$data" "$reset_code"
+	echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
+done <<< "$_userlist"
+echo ""
+_tuser=$(awk -F: '$3>=1000 {print $1}' /etc/passwd | grep -v nobody | wc -l)
+_ons=$(ps -x | grep sshd | grep -v root | grep priv | wc -l)
+[[ "$(cat /etc/SSHPlus/Exp)" != "" ]] && _expuser=$(cat /etc/SSHPlus/Exp) || _expuser="0"
+[[ -e /etc/openvpn/openvpn-status.log ]] && _onop=$(grep -c "10.8.0" /etc/openvpn/openvpn-status.log) || _onop="0"
+if [[ -e /etc/default/dropbear ]]; then
+	_drp=$(ps aux 2>/dev/null | grep -c '[d]ropbear' || echo "0")
+	_ondrp=$((_drp > 0 ? _drp - 1 : 0))
+else
+	_ondrp="0"
+fi
+_onli=$((_ons + _onop + _ondrp))
+cyan_code=$(get_color_code "cyan")
+red_code=$(get_color_code "red")
+echo -e "${yellow_code}• ${cyan_code}TOTAL USERS${white_code} $_tuser ${yellow_code}• ${green_code}ONLINE USERS${white_code}: $_onli ${yellow_code}• ${red_code}EXPIRED USERS${white_code}: $_expuser ${yellow_code}•${reset_code}"
+echo ""
+menu_option "0" "BACK TO MENU" "red" "yellow"
+menu_option "00" "EXIT" "red" "yellow"
+echo ""
+color_echo_n "Select option [0/00]: " "green"
+read -r resp
+[[ "$resp" == "00" ]] && exit 99
+exit 0

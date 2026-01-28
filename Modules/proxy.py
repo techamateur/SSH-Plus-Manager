@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-# encoding: utf-8
-# SSHPLUS By @Crazy_vpn
-import socket, threading, thread, select, signal, sys, time
+# -*- coding: utf-8 -*-
+"""HTTP CONNECT proxy for SSH Plus (default port 80). Used by connections module."""
+import socket
+import threading
+import select
+import sys
+import time
 from os import system
 system("clear")
-#conexao
+
 IP = '0.0.0.0'
 try:
-   PORT = int(sys.argv[1])
-except:
-   PORT = 80
+    PORT = int(sys.argv[1])
+except (IndexError, ValueError):
+    PORT = 80
 PASS = ''
 BUFLEN = 8196 * 8
 TIMEOUT = 60
@@ -17,7 +21,7 @@ MSG = 'SSHPLUS'
 COR = '<font color="null">'
 FTAG = '</font>'
 DEFAULT_HOST = '0.0.0.0:22'
-RESPONSE = "HTTP/1.1 200 " + str(COR) + str(MSG) + str(FTAG) + "\r\n\r\n"
+RESPONSE = ("HTTP/1.1 200 " + COR + MSG + FTAG + "\r\n\r\n").encode('utf-8')
  
 class Server(threading.Thread):
     def __init__(self, host, port):
@@ -26,8 +30,8 @@ class Server(threading.Thread):
         self.host = host
         self.port = port
         self.threads = []
-	self.threadsLock = threading.Lock()
-	self.logLock = threading.Lock()
+        self.threads_lock = threading.Lock()
+        self.log_lock = threading.Lock()
 
     def run(self):
         self.soc = socket.socket(socket.AF_INET)
@@ -57,31 +61,30 @@ class Server(threading.Thread):
         print log
         self.logLock.release()
 	
-    def addConn(self, conn):
+    def add_conn(self, conn):
         try:
-            self.threadsLock.acquire()
+            self.threads_lock.acquire()
             if self.running:
                 self.threads.append(conn)
         finally:
-            self.threadsLock.release()
-                    
-    def removeConn(self, conn):
+            self.threads_lock.release()
+
+    def remove_conn(self, conn):
         try:
-            self.threadsLock.acquire()
+            self.threads_lock.acquire()
             self.threads.remove(conn)
         finally:
-            self.threadsLock.release()
-                
+            self.threads_lock.release()
+
     def close(self):
         try:
             self.running = False
-            self.threadsLock.acquire()
-            
+            self.threads_lock.acquire()
             threads = list(self.threads)
-            for c in threads:
-                c.close()
+            for conn in threads:
+                conn.close()
         finally:
-            self.threadsLock.release()
+            self.threads_lock.release()
 			
 
 class ConnectionHandler(threading.Thread):
@@ -92,7 +95,7 @@ class ConnectionHandler(threading.Thread):
         self.client = socClient
         self.client_buffer = ''
         self.server = server
-        self.log = 'Conexao: ' + str(addr)
+        self.log = 'Connection: ' + str(addr)
 
     def close(self):
         try:
@@ -115,8 +118,8 @@ class ConnectionHandler(threading.Thread):
 
     def run(self):
         try:
-            self.client_buffer = self.client.recv(BUFLEN)
-        
+            buf = self.client.recv(BUFLEN)
+            self.client_buffer = buf.decode('utf-8', errors='replace') if isinstance(buf, bytes) else buf
             hostPort = self.findHeader(self.client_buffer, 'X-Real-Host')
             
             if hostPort == '':
@@ -133,22 +136,21 @@ class ConnectionHandler(threading.Thread):
                 if len(PASS) != 0 and passwd == PASS:
                     self.method_CONNECT(hostPort)
                 elif len(PASS) != 0 and passwd != PASS:
-                    self.client.send('HTTP/1.1 400 WrongPass!\r\n\r\n')
+                    self.client.send(b'HTTP/1.1 400 WrongPass!\r\n\r\n')
                 if hostPort.startswith(IP):
                     self.method_CONNECT(hostPort)
                 else:
-                   self.client.send('HTTP/1.1 403 Forbidden!\r\n\r\n')
+                    self.client.send(b'HTTP/1.1 403 Forbidden!\r\n\r\n')
             else:
-                print '- No X-Real-Host!'
-                self.client.send('HTTP/1.1 400 NoXRealHost!\r\n\r\n')
+                print('- No X-Real-Host!')
+                self.client.send(b'HTTP/1.1 400 NoXRealHost!\r\n\r\n')
 
         except Exception as e:
-            self.log += ' - error: ' + e.strerror
-            self.server.printLog(self.log)
-	    pass
+            self.log += ' - error: ' + getattr(e, 'strerror', str(e))
+            self.server.print_log(self.log)
         finally:
             self.close()
-            self.server.removeConn(self)
+            self.server.remove_conn(self)
 
     def findHeader(self, head, header):
         aux = head.find(header + ': ')
@@ -187,7 +189,7 @@ class ConnectionHandler(threading.Thread):
         self.connect_target(path)
         self.client.sendall(RESPONSE)
         self.client_buffer = ''
-        self.server.printLog(self.log)
+        self.server.print_log(self.log)
         self.doCONNECT()
                     
     def doCONNECT(self):
@@ -225,19 +227,20 @@ class ConnectionHandler(threading.Thread):
 
 
 
-def main(host=IP, port=PORT):
-    print "\033[0;34m━"*8,"\033[1;32m PROXY SOCKS","\033[0;34m━"*8,"\n"
-    print "\033[1;33mIP:\033[1;32m " + IP
-    print "\033[1;33mPORTA:\033[1;32m " + str(PORT) + "\n"
-    print "\033[0;34m━"*10,"\033[1;32m SSHPLUS","\033[0;34m━\033[1;37m"*11,"\n"
+def main():
+    """Run proxy server; Ctrl+C to stop."""
+    print("\033[0;34m━\033[0m" * 8 + " \033[1;32m PROXY SOCKS \033[0;34m━\033[0m" * 8 + "\n")
+    print("\033[1;33mIP:\033[1;32m " + IP)
+    print("\033[1;33mPORT:\033[1;32m " + str(PORT) + "\n")
     server = Server(IP, PORT)
     server.start()
-    while True:
-        try:
+    try:
+        while True:
             time.sleep(2)
-        except KeyboardInterrupt:
-            print '\nParando...'
-            server.close()
-            break
+    except KeyboardInterrupt:
+        print("\nStopping...")
+        server.close()
+
+
 if __name__ == '__main__':
     main()

@@ -1,15 +1,13 @@
 #!/bin/bash
+# multiport – SSH multi-port setup (menu connections → OpenSSH). Configures SSH ports via systemd/sshd_config.
 
-# SSH Multi-Port Setup Module
-# Configures SSH to listen on multiple ports using systemd socket activation
-
-# Load color utility functions
-if [[ -f "/etc/SSHPlus/colors" ]]; then
-    source /etc/SSHPlus/colors
-elif [[ -f "/bin/colors" ]]; then
-    source /bin/colors
+# Load color helpers (install path vs dev path)
+if [[ -f /etc/SSHPlus/colors ]]; then
+	source /etc/SSHPlus/colors
+elif [[ -f /bin/colors ]]; then
+	source /bin/colors
 elif [[ -f "$(dirname "$0")/colors" ]]; then
-    source "$(dirname "$0")/colors"
+	source "$(dirname "$0")/colors"
 fi
 
 # Function to check and install dependencies
@@ -17,7 +15,7 @@ check_dependencies() {
     local missing_deps=()
     local install_needed=false
     local needs_root=false
-    
+
     # Check for package manager
     local pkg_manager=""
     if command -v apt-get > /dev/null 2>&1; then
@@ -29,35 +27,35 @@ check_dependencies() {
     elif command -v pacman > /dev/null 2>&1; then
         pkg_manager="pacman"
     fi
-    
+
     info_msg "Checking dependencies..."
-    
+
     # Check for openssh-server
     if ! command -v sshd > /dev/null 2>&1; then
         missing_deps+=("openssh-server")
         install_needed=true
         needs_root=true
     fi
-    
+
     # Check for ss (from iproute2)
     if ! command -v ss > /dev/null 2>&1; then
         missing_deps+=("iproute2")
         install_needed=true
         needs_root=true
     fi
-    
+
     # Check for systemctl (from systemd) - optional but recommended
     if ! command -v systemctl > /dev/null 2>&1; then
         warning_msg "systemd not found. Some features may not work."
     fi
-    
+
     # Check for ufw - REQUIRED for firewall configuration
     if ! command -v ufw > /dev/null 2>&1; then
         missing_deps+=("ufw")
         install_needed=true
         needs_root=true
     fi
-    
+
     # Check for essential text processing tools
     for tool in grep sed awk cut; do
         if ! command -v "$tool" > /dev/null 2>&1; then
@@ -66,7 +64,7 @@ check_dependencies() {
             needs_root=true
         fi
     done
-    
+
     # If installation is needed, check for root access
     if [[ $needs_root == true ]]; then
         if [[ $EUID -ne 0 ]]; then
@@ -75,18 +73,18 @@ check_dependencies() {
             error_msg "Please run: sudo $0"
             return 1
         fi
-        
+
         if [[ -z "$pkg_manager" ]]; then
             error_msg "No supported package manager found. Please install dependencies manually:"
             error_msg "Missing: ${missing_deps[*]}"
             return 1
         fi
     fi
-    
+
     # Install missing dependencies if needed
     if [[ $install_needed == true ]]; then
         info_msg "Installing missing dependencies: ${missing_deps[*]}"
-        
+
         case "$pkg_manager" in
             apt-get)
                 apt-get update -qq > /dev/null 2>&1
@@ -166,7 +164,7 @@ check_dependencies() {
                 done
                 ;;
         esac
-        
+
         # Verify installations
         local failed=()
         for dep in "${missing_deps[@]}"; do
@@ -180,12 +178,12 @@ check_dependencies() {
                 awk) cmd="awk" ;;
                 cut) cmd="cut" ;;
             esac
-            
+
             if [[ -n "$cmd" ]] && ! command -v "$cmd" > /dev/null 2>&1; then
                 failed+=("$dep")
             fi
         done
-        
+
         if [[ ${#failed[@]} -gt 0 ]]; then
             error_msg "Failed to install: ${failed[*]}"
             error_msg "Please install them manually and try again."
@@ -196,14 +194,14 @@ check_dependencies() {
     else
         success_msg "All dependencies are installed."
     fi
-    
+
     # Verify sshd_config exists
     if [[ ! -f "/etc/ssh/sshd_config" ]]; then
         error_msg "SSH configuration file not found: /etc/ssh/sshd_config"
         error_msg "Please ensure OpenSSH server is properly installed."
         return 1
     fi
-    
+
     return 0
 }
 
@@ -234,7 +232,7 @@ ensure_ssh_directories() {
         # Privilege separation is disabled, directory not needed
         return 0
     fi
-    
+
     # Try to create /run/sshd first (most common location)
     if [[ ! -d "/run/sshd" ]]; then
         if mkdir -p /run/sshd 2>/dev/null; then
@@ -248,7 +246,7 @@ ensure_ssh_directories() {
                     chown root:root /var/run/sshd 2>/dev/null || true
                 fi
             fi
-            
+
             # If still can't create, check if we can configure sshd_config to use different location
             if [[ ! -d "/run/sshd" ]] && [[ ! -d "/var/run/sshd" ]]; then
                 # Check if PrivilegeSeparationDirectory is set in config
@@ -267,7 +265,7 @@ ensure_ssh_directories() {
             fi
         fi
     fi
-    
+
     # Final verification - check if directory exists or privilege separation is disabled
     if [[ ! -d "/run/sshd" ]] && [[ ! -d "/var/run/sshd" ]]; then
         # Check if privilege separation directory is configured in sshd_config
@@ -275,16 +273,16 @@ ensure_ssh_directories() {
         if [[ -n "$priv_sep_dir" ]] && [[ -d "$priv_sep_dir" ]]; then
             return 0
         fi
-        
+
         # Last resort: disable privilege separation if directory can't be created
         if ! grep -qE "^[[:space:]]*UsePrivilegeSeparation" /etc/ssh/sshd_config 2>/dev/null; then
             echo "UsePrivilegeSeparation no" >> /etc/ssh/sshd_config 2>/dev/null || true
             return 0
         fi
-        
+
         return 1
     fi
-    
+
     return 0
 }
 
@@ -318,7 +316,7 @@ show_current_ports() {
 add_port_sshd() {
     local port=$1
     local quiet="${2:-false}"  # Optional second parameter for quiet mode
-    
+
     # Check if port already exists using the helper function
     if port_exists "$port"; then
         if [[ "$quiet" != "true" ]]; then
@@ -326,7 +324,7 @@ add_port_sshd() {
         fi
         return 0
     fi
-    
+
     # Add port before any Match blocks (insert only before the first Match)
     if grep -q "^Match" /etc/ssh/sshd_config 2>/dev/null; then
         # Find the first Match line and insert before it (only once)
@@ -341,7 +339,7 @@ add_port_sshd() {
         # Add at the end
         echo "Port $port" >> /etc/ssh/sshd_config
     fi
-    
+
     # Ensure required SSH directories exist before validation
     if ! ensure_ssh_directories; then
         if [[ "$quiet" != "true" ]]; then
@@ -349,7 +347,7 @@ add_port_sshd() {
         fi
         # Still try to validate - sometimes sshd can work without the directory
     fi
-    
+
     # Validate configuration immediately after adding
     local validation_output=$(sshd -t 2>&1)
     if [[ $? -ne 0 ]]; then
@@ -363,26 +361,26 @@ add_port_sshd() {
         fi
         return 1
     fi
-    
+
     return 0
 }
 
 # Function to remove port from sshd_config
 remove_port_sshd() {
     local port=$1
-    
+
     if [[ "$port" == "22" ]]; then
         warning_msg "Cannot remove default port 22!"
         return 1
     fi
-    
+
     if ! grep -q "^Port $port" /etc/ssh/sshd_config 2>/dev/null; then
         error_msg "Port $port is not configured in sshd_config"
         return 1
     fi
-    
+
     sed -i "/^Port $port$/d" /etc/ssh/sshd_config
-    
+
     # Validate configuration
     if ! sshd -t > /dev/null 2>&1; then
         error_msg "Invalid SSH configuration! Reverting changes..."
@@ -390,35 +388,35 @@ remove_port_sshd() {
         add_port_sshd "$port"
         return 1
     fi
-    
+
     return 0
 }
 
 # Function to configure systemd socket
 configure_systemd_socket() {
     local ports=$(get_current_ports)
-    
+
     # Create override directory
     mkdir -p /etc/systemd/system/ssh.socket.d
-    
+
     # Create socket override file
     cat > /etc/systemd/system/ssh.socket.d/override.conf << 'EOF'
 [Socket]
 ListenStream=
 EOF
-    
+
     # Add all ports to socket configuration
     while read port; do
         echo "ListenStream=0.0.0.0:$port" >> /etc/systemd/system/ssh.socket.d/override.conf
         echo "ListenStream=[::]:$port" >> /etc/systemd/system/ssh.socket.d/override.conf
     done <<< "$ports"
-    
+
     # Reload systemd
     systemctl daemon-reload
-    
+
     # Restart socket
     systemctl restart ssh.socket
-    
+
     # Restart service
     systemctl restart ssh.service
 }
@@ -426,14 +424,14 @@ EOF
 # Function to configure UFW firewall
 configure_ufw() {
     local ports=$(get_current_ports)
-    
+
     # UFW is required - should be installed by check_dependencies, but verify
     if ! command -v ufw > /dev/null 2>&1; then
         error_msg "UFW is required but not installed!"
         error_msg "Please install UFW manually: apt-get install ufw (or yum/dnf/pacman equivalent)"
         return 1
     fi
-    
+
     # Enable UFW if not already enabled
     if ! ufw status | grep -q "Status: active"; then
         info_msg "Enabling UFW..."
@@ -442,7 +440,7 @@ configure_ufw() {
             return 1
         fi
     fi
-    
+
     # Allow all configured ports
     local failed_ports=()
     while read port; do
@@ -450,12 +448,12 @@ configure_ufw() {
             failed_ports+=("$port")
         fi
     done <<< "$ports"
-    
+
     if [[ ${#failed_ports[@]} -gt 0 ]]; then
         warning_msg "Failed to configure firewall rules for ports: ${failed_ports[*]}"
         return 1
     fi
-    
+
     success_msg "UFW firewall rules updated"
     return 0
 }
@@ -465,7 +463,7 @@ verify_setup() {
     echo ""
     color_echo "Verifying SSH multi-port setup..." "green"
     echo ""
-    
+
     # Check listening ports
     local listening=$(ss -ltnp 2>/dev/null | grep ssh | awk '{print $4}' | cut -d: -f2 | sort -n | uniq)
     if [[ -n "$listening" ]]; then
@@ -476,14 +474,14 @@ verify_setup() {
     else
         warning_msg "No SSH ports found listening!"
     fi
-    
+
     # Check systemd socket status
     if systemctl is-active --quiet ssh.socket; then
         success_msg "systemd ssh.socket is active"
     else
         error_msg "systemd ssh.socket is not active!"
     fi
-    
+
     # Check sshd accepted ports
     local accepted=$(sshd -T 2>/dev/null | grep '^port' | awk '{print $2}' | sort -n | uniq)
     if [[ -n "$accepted" ]]; then
@@ -510,7 +508,7 @@ main_menu() {
         echo ""
         color_echo_n "SELECT OPTION: " "green"
         read -r option
-        
+
         case "$option" in
             1)
                 clear
@@ -518,21 +516,21 @@ main_menu() {
                 echo ""
                 color_echo_n "Enter port number: " "green"
                 read -r port
-                
+
                 if [[ -z "$port" ]]; then
                     error_msg "Port cannot be empty!"
                     sleep 2
                     continue
                 fi
-                
+
                 if ! verif_ptrs "$port"; then
                     sleep 2
                     continue
                 fi
-                
+
                 # Ensure required SSH directories exist
                 ensure_ssh_directories
-                
+
                 if add_port_sshd "$port"; then
                     if check_systemd; then
                         configure_systemd_socket
@@ -552,7 +550,7 @@ main_menu() {
                 else
                     error_msg "Failed to add port $port!"
                 fi
-                
+
                 sleep 3
                 ;;
             2)
@@ -565,23 +563,23 @@ main_menu() {
                 echo ""
                 color_echo_n "Enter port number to remove: " "green"
                 read -r port
-                
+
                 if [[ -z "$port" ]]; then
                     error_msg "Port cannot be empty!"
                     sleep 2
                     continue
                 fi
-                
+
                 if [[ "$port" == "22" ]]; then
                     error_msg "Cannot remove default port 22!"
                     sleep 2
                     continue
                 fi
-                
+
                 echo ""
                 color_echo "Removing port $port from SSH configuration..." "green"
                 echo ""
-                
+
                 if remove_port_sshd "$port"; then
                     if check_systemd; then
                         configure_systemd_socket
@@ -593,12 +591,12 @@ main_menu() {
                             service ssh restart 2>/dev/null || service sshd restart 2>/dev/null
                         fi
                     fi
-                    
+
                     success_msg "Port $port removed successfully!"
                 else
                     error_msg "Failed to remove port $port!"
                 fi
-                
+
                 sleep 3
                 ;;
             3)
@@ -610,13 +608,13 @@ main_menu() {
                 echo ""
                 color_echo_n "Ports: " "green"
                 read -r ports_input
-                
+
                 if [[ -z "$ports_input" ]]; then
                     error_msg "No ports entered!"
                     sleep 2
                     continue
                 fi
-                
+
                 # Ensure required SSH directories exist
                 if ! ensure_ssh_directories; then
                     error_msg "Warning: Could not create /run/sshd directory."
@@ -625,13 +623,13 @@ main_menu() {
                     sleep 3
                     continue
                 fi
-                
+
                 # Create backup of sshd_config before making changes
                 local backup_file="/etc/ssh/sshd_config.backup.$(date +%Y%m%d_%H%M%S)"
                 if cp /etc/ssh/sshd_config "$backup_file" 2>/dev/null; then
                     info_msg "Backup created: $backup_file"
                 fi
-                
+
                 # Validate current config before making changes
                 local validation_error=$(sshd -t 2>&1)
                 if [[ $? -ne 0 ]]; then
@@ -643,7 +641,7 @@ main_menu() {
                     sleep 3
                     continue
                 fi
-                
+
                 # Parse comma-separated ports, trim spaces
                 local ports_list=""
                 IFS=',' read -ra port_array <<< "$ports_input"
@@ -658,32 +656,32 @@ main_menu() {
                         fi
                     fi
                 done
-                
+
                 if [[ -z "$ports_list" ]]; then
                     error_msg "No valid ports to configure!"
                     sleep 2
                     continue
                 fi
-                
+
                 echo ""
                 color_echo "Configuring multiple ports..." "green"
                 echo ""
-                
+
                 # Get current ports before making changes
                 local current_ports=$(get_current_ports)
-                
+
                 # Add all ports (skip if already exists)
                 local added_count=0
                 local skipped_count=0
                 local failed_count=0
-                
+
                 for port in $ports_list; do
                     # Check if port already exists in current configuration
                     if port_exists "$port"; then
                         ((skipped_count++))
                         continue
                     fi
-                    
+
                     # Try to add the port (quiet mode for batch operations)
                     if add_port_sshd "$port" "true"; then
                         ((added_count++))
@@ -693,7 +691,7 @@ main_menu() {
                         ((failed_count++))
                     fi
                 done
-                
+
                 # Final validation (only if we made changes)
                 if [[ $added_count -gt 0 ]]; then
                     validation_error=$(sshd -t 2>&1)
@@ -702,7 +700,7 @@ main_menu() {
                         echo "$validation_error" | while read line; do
                             color_echo "  $line" "red"
                         done
-                        
+
                         # Restore from backup
                         if [[ -f "$backup_file" ]]; then
                             warning_msg "Restoring original configuration from backup..."
@@ -730,7 +728,7 @@ main_menu() {
                         continue
                     fi
                 fi
-                
+
                 # Apply changes if any ports were added
                 if [[ $added_count -gt 0 ]]; then
                     if check_systemd; then
@@ -742,7 +740,7 @@ main_menu() {
                             service ssh restart 2>/dev/null || service sshd restart 2>/dev/null
                         fi
                     fi
-                    
+
                     if configure_ufw; then
                         success_msg "Multi-port setup completed!"
                     else
@@ -765,7 +763,7 @@ main_menu() {
                 else
                     warning_msg "No ports were configured."
                 fi
-                
+
                 sleep 5
                 ;;
             4)

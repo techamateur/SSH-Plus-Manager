@@ -1,12 +1,13 @@
 #!/bin/bash
+# sshmonitor – live SSH/OpenVPN user connections and traffic (menu option [04] CONNECTIONS).
 
-# Load color utility functions
-if [[ -f "/etc/SSHPlus/colors" ]]; then
-    source /etc/SSHPlus/colors
-elif [[ -f "/bin/colors" ]]; then
-    source /bin/colors
+# Load color helpers (install path vs dev path)
+if [[ -f /etc/SSHPlus/colors ]]; then
+	source /etc/SSHPlus/colors
+elif [[ -f /bin/colors ]]; then
+	source /bin/colors
 elif [[ -f "$(dirname "$0")/colors" ]]; then
-    source "$(dirname "$0")/colors"
+	source "$(dirname "$0")/colors"
 fi
 
 [[ ! -e /usr/lib/sshplus ]] && exit 0
@@ -200,9 +201,10 @@ _do_display() {
 		else
 			s2ssh="1"
 		fi
+		# Count SSH sessions (unique ttys), not raw sshd process count (2 per session)
 		sqd=0
 		if grep -qw "$user" /etc/passwd 2>/dev/null; then
-			sqd=$(ps -u "$user" 2>/dev/null | grep -c sshd 2>/dev/null || echo 0)
+			sqd=$(ps -u "$user" -o tty=,comm= 2>/dev/null | awk '$2~/sshd/ && $1!~/^\?/ {print $1}' | sort -u | wc -l)
 		fi
 		sqd=${sqd//[!0-9]/}; sqd=${sqd:-0}
 		ovp=0

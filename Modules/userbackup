@@ -1,0 +1,48 @@
+#!/bin/bash
+# userbackup – backup usernames, passwords, limits, expiration dates (menu option [12] BACKUP).
+
+# Load color helpers (install path vs dev path)
+if [[ -f /etc/SSHPlus/colors ]]; then
+	source /etc/SSHPlus/colors
+elif [[ -f /bin/colors ]]; then
+	source /bin/colors
+elif [[ -f "$(dirname "$0")/colors" ]]; then
+	source "$(dirname "$0")/colors"
+fi
+
+print_header "            USER BACKUP                 "
+echo ""
+backup_dir="${HOME:-/root}"
+stamp=$(date +%Y%m%d_%H%M%S)
+out="${backup_dir}/sshplus_backup_${stamp}.txt"
+db="/root/users.db"
+pass_dir="/etc/SSHPlus/senha"
+
+{
+	echo "# SSHPlus user backup - $stamp"
+	echo "# Format: username:password:limit:expiration"
+	echo ""
+	list_user=$(awk -F: '$3>=1000 {print $1}' /etc/passwd 2>/dev/null | grep -v nobody)
+	if [[ -z "$list_user" ]]; then
+		echo "# No users found."
+		exit 0
+	fi
+	while read -r u; do
+		[[ -z "$u" ]] && continue
+		pass="N/A" lim="1" exp="never"
+		[[ -f "${pass_dir}/${u}" ]] && pass=$(cat "${pass_dir}/${u}" 2>/dev/null)
+		[[ -f "$db" ]] && grep -q "^${u}[[:space:]]" "$db" 2>/dev/null && lim=$(grep -w "$u" "$db" 2>/dev/null | cut -d' ' -f2)
+		exp=$(chage -l "$u" 2>/dev/null | grep -E "Account expires" | cut -d' ' -f3-)
+		[[ -z "$exp" ]] && exp="never"
+		echo "${u}:${pass}:${lim}:${exp}"
+	done <<<"$list_user"
+} >"$out" 2>/dev/null
+
+if [[ -f "$out" ]] && [[ -s "$out" ]]; then
+	success_msg "Backup saved to: $out"
+	color_echo "File: $out" "cyan"
+else
+	error_msg "Backup file could not be created."
+fi
+echo ""
+sleep 2

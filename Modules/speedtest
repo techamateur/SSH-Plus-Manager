@@ -1,0 +1,132 @@
+#!/bin/bash
+# speedtest – test server network speed (was velocity)
+
+if [[ -f "/etc/SSHPlus/colors" ]]; then
+	source /etc/SSHPlus/colors
+elif [[ -f "/bin/colors" ]]; then
+	source /bin/colors
+elif [[ -f "$(dirname "$0")/colors" ]]; then
+	source "$(dirname "$0")/colors"
+fi
+
+run_speedtest() {
+	local out_png="$HOME/speed_png" out_down="$HOME/speed_down" out_upl="$HOME/speed_upl" out_lnk="$HOME/speed_lnk" out_err="$HOME/speed_err"
+	echo "N/A" >"$out_png"
+	echo "N/A" >"$out_down"
+	echo "N/A" >"$out_upl"
+	echo "N/A" >"$out_lnk"
+	: >"$out_err"
+	if ! command -v speedtest-cli >/dev/null 2>&1; then
+		echo "SPEEDTEST_CLI_MISSING" >"$out_lnk"
+		return 1
+	fi
+	local raw
+	raw=$(speedtest-cli --simple 2>"$out_err") || true
+	if [[ -z "$raw" ]]; then
+		echo "SPEEDTEST_CLI_FAIL" >"$out_lnk"
+		return 1
+	fi
+	echo "$raw" | awk -F': ' '/Ping/{gsub(/ ms/,"",$2); printf "%.2f ms\n", $2}' >"$out_png"
+	echo "$raw" | awk -F': ' '/Download/{gsub(/ *Mbit\/s/,"",$2); printf "%.2f Mbps\n", $2+0}' >"$out_down"
+	echo "$raw" | awk -F': ' '/Upload/{gsub(/ *Mbit\/s/,"",$2); printf "%.2f Mbps\n", $2+0}' >"$out_upl"
+	echo "speedtest-cli" >"$out_lnk"
+	[[ -s "$out_png" ]] || echo "N/A" >"$out_png"
+	[[ -s "$out_down" ]] || echo "N/A" >"$out_down"
+	[[ -s "$out_upl" ]] || echo "N/A" >"$out_upl"
+	return 0
+}
+
+show_progress() {
+	yellow_code=$(get_color_code "yellow")
+	red_code=$(get_color_code "red")
+	white_code=$(get_color_code "white")
+	green_code=$(get_color_code "green")
+	reset_code=$(get_reset_code)
+	tput civis 2>/dev/null
+	echo -ne "  ${yellow_code}WAIT ${white_code}- ${yellow_code}["
+	while [[ ! -e $HOME/fim ]]; do
+		for ((i = 0; i < 18; i++)); do
+			echo -ne "${red_code}#"
+			sleep 0.1
+		done
+		[[ -e $HOME/fim ]] && break
+		echo -e "${yellow_code}]"
+		sleep 1
+		tput cuu1 2>/dev/null
+		tput dl1 2>/dev/null
+		echo -ne "  ${yellow_code}WAIT ${white_code}- ${yellow_code}["
+	done
+	[[ -e $HOME/fim ]] && rm -f $HOME/fim
+	echo -e "${yellow_code}]${white_code} -${green_code} OK !${reset_code}"
+	tput cnorm 2>/dev/null
+}
+
+echo ""
+color_echo "   TESTING SERVER SPEED !" "green"
+echo ""
+[[ -e $HOME/fim ]] && rm -f $HOME/fim
+( run_speedtest; touch $HOME/fim ) &
+show_progress
+echo ""
+
+lnk="N/A"
+[[ -f $HOME/speed_lnk ]] && [[ -s $HOME/speed_lnk ]] && lnk=$(cat $HOME/speed_lnk)
+
+if [[ "$lnk" == "SPEEDTEST_CLI_MISSING" ]]; then
+	error_msg "speedtest-cli is required but not installed."
+	if [[ "$(id -u)" -eq 0 ]]; then
+		color_echo "Attempting to install speedtest-cli..." "yellow"
+		echo ""
+		if python3 -m pip install speedtest-cli 2>&1 || pip3 install speedtest-cli 2>&1; then
+			success_msg "speedtest-cli installed. Run [09] SPEEDTEST again."
+		elif apt-get update -qq 2>/dev/null && apt-get install -y speedtest-cli 2>&1; then
+			success_msg "speedtest-cli installed (apt). Run [09] SPEEDTEST again."
+		else
+			error_msg "Auto-install failed. Errors shown above."
+			color_echo "Install manually:  pip3 install speedtest-cli   or   apt install speedtest-cli" "cyan"
+		fi
+	else
+		color_echo "Install with:  pip3 install speedtest-cli   or   apt install speedtest-cli" "yellow"
+	fi
+	echo ""
+	color_echo_n "Press ENTER to continue..." "yellow"
+	read -r
+	rm -f $HOME/speed_png $HOME/speed_down $HOME/speed_upl $HOME/speed_lnk $HOME/speed_err 2>/dev/null
+	exit 0
+fi
+
+if [[ "$lnk" == "SPEEDTEST_CLI_FAIL" ]]; then
+	error_msg "speedtest-cli ran but produced no output (network or config issue)."
+	[[ -f $HOME/speed_err ]] && [[ -s $HOME/speed_err ]] && { color_echo "Error output:" "yellow"; sed 's/^/  /' "$HOME/speed_err" | head -20; echo ""; }
+	color_echo "Check connectivity to speedtest.net and try again." "cyan"
+	echo ""
+	color_echo_n "Press ENTER to continue..." "yellow"
+	read -r
+	rm -f $HOME/speed_png $HOME/speed_down $HOME/speed_upl $HOME/speed_lnk $HOME/speed_err 2>/dev/null
+	exit 0
+fi
+
+png="N/A"; down="N/A"; upl="N/A"
+[[ -f $HOME/speed_png ]] && [[ -s $HOME/speed_png ]] && png=$(cat $HOME/speed_png)
+[[ -f $HOME/speed_down ]] && [[ -s $HOME/speed_down ]] && down=$(cat $HOME/speed_down)
+[[ -f $HOME/speed_upl ]] && [[ -s $HOME/speed_upl ]] && upl=$(cat $HOME/speed_upl)
+
+blue_code=$(get_color_code "blue")
+green_code=$(get_color_code "green")
+white_code=$(get_color_code "white")
+cyan_code=$(get_color_code "cyan")
+reset_code=$(get_reset_code)
+echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
+color_echo_n "PING (LATENCY):" "green"
+color_echo "$png" "white"
+color_echo_n "DOWNLOAD:" "green"
+color_echo "$down" "white"
+color_echo_n "UPLOAD:" "green"
+color_echo "$upl" "white"
+color_echo_n "LINK: " "green"
+color_echo "$lnk" "cyan"
+echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
+echo ""
+color_echo_n "Press ENTER to continue..." "yellow"
+read -r
+rm -f "$HOME/speed" "$HOME/speed_png" "$HOME/speed_down" "$HOME/speed_upl" "$HOME/speed_lnk" "$HOME/speed_err" 2>/dev/null

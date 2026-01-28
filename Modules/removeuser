@@ -1,41 +1,33 @@
 #!/bin/bash
+# removeuser – remove one or all SSH users (menu option [02] REMOVE USER).
 
-# Load color utility functions
-if [[ -f "/etc/SSHPlus/colors" ]]; then
-    source /etc/SSHPlus/colors
-elif [[ -f "/bin/colors" ]]; then
-    source /bin/colors
+# Load color helpers (install path vs dev path)
+if [[ -f /etc/SSHPlus/colors ]]; then
+	source /etc/SSHPlus/colors
+elif [[ -f /bin/colors ]]; then
+	source /bin/colors
 elif [[ -f "$(dirname "$0")/colors" ]]; then
-    source "$(dirname "$0")/colors"
+	source "$(dirname "$0")/colors"
 fi
 
-remove_ovp () {
-if [[ -e /etc/debian_version ]]; then
-	GROUPNAME=nogroup
-fi
-user="$1"
-cd /etc/openvpn/easy-rsa/
-./easyrsa --batch revoke $user
-./easyrsa gen-crl
-rm -rf pki/reqs/$user.req
-rm -rf pki/private/$user.key
-rm -rf pki/issued/$user.crt
-rm -rf /etc/openvpn/crl.pem
-cp /etc/openvpn/easy-rsa/pki/crl.pem /etc/openvpn/crl.pem
-chown nobody:$GROUPNAME /etc/openvpn/crl.pem
-[[ -e $HOME/$user.ovpn ]] && rm $HOME/$user.ovpn > /dev/null 2>&1
-[[ -e /var/www/html/openvpn/$user.zip ]] && rm /var/www/html/openvpn/$user.zip > /dev/null 2>&1
-} > /dev/null 2>&1
+remove_ovp() {
+	local user="$1"
+	[[ -e /etc/debian_version ]] && GROUPNAME="nogroup" || GROUPNAME="nobody"
+	cd /etc/openvpn/easy-rsa/ || return
+	./easyrsa --batch revoke "$user" >/dev/null 2>&1
+	./easyrsa gen-crl >/dev/null 2>&1
+	rm -rf "pki/reqs/${user}.req" "pki/private/${user}.key" "pki/issued/${user}.crt" 2>/dev/null
+	rm -f /etc/openvpn/crl.pem 2>/dev/null
+	cp /etc/openvpn/easy-rsa/pki/crl.pem /etc/openvpn/crl.pem 2>/dev/null
+	chown nobody:"${GROUPNAME}" /etc/openvpn/crl.pem 2>/dev/null
+	[[ -e "$HOME/${user}.ovpn" ]] && rm -f "$HOME/${user}.ovpn" 2>/dev/null
+	[[ -e /var/www/html/openvpn/"${user}.zip" ]] && rm -f /var/www/html/openvpn/"${user}.zip" 2>/dev/null
+}
 [[ ! -e /usr/lib/sshplus ]] && rm -rf /bin/ > /dev/null 2>&1
 database="/root/users.db"
 clear
-tput setaf 7
-tput setab 4
-tput bold
-printf '%32s%s%-13s\n' "Remove SSH User"
-tput sgr0
+print_header "   Remove SSH User   "
 echo ""
-# Use menu_option function for menu items
 menu_option "1" "REMOVE A USER" "red" "yellow"
 menu_option "2" "REMOVE ALL USERS" "red" "yellow"
 menu_option "0" "BACK" "red" "yellow"
@@ -46,32 +38,27 @@ read -r resp
 resp="${resp//[[:space:]]/}"
 [[ "$resp" == "0" ]] && exit 0
 [[ "$resp" == "00" ]] && exit 99
-if [[ "$resp" = "1" ]]; then
-clear
-tput setaf 7
-tput setab 4
-tput bold
-printf '%32s%s%-13s\n' "Remove SSH User"
-tput sgr0
-echo ""
-color_echo "LIST OF USERS:" "yellow"
-echo ""
-_userT=$(awk -F: '$3>=1000 {print $1}' /etc/passwd | grep -v nobody)
-i=0
-unset _userPass
-while read _user; do
-	i=$(expr $i + 1)
-	_oP=$i
-	[[ $i == [1-9] ]] && i=0$i && oP+=" 0$i"
-	# Use color codes for user list
+if [[ "$resp" == "1" ]]; then
+	clear
+	print_header "   Remove SSH User   "
+	echo ""
+	color_echo "LIST OF USERS:" "yellow"
+	echo ""
+	_user_list=$(awk -F: '$3>=1000 {print $1}' /etc/passwd 2>/dev/null | grep -v nobody)
+	idx=0
+	unset _userPass
 	red_code=$(get_color_code "red")
 	cyan_code=$(get_color_code "cyan")
 	white_code=$(get_color_code "white")
 	green_code=$(get_color_code "green")
 	reset_code=$(get_reset_code)
-	echo -e "${red_code}[${cyan_code}$i${red_code}] ${white_code}- ${green_code}$_user${reset_code}"
-	_userPass+="\n${_oP}:${_user}"
-done <<< "${_userT}"
+	while read -r _user; do
+		[[ -z "$_user" ]] && continue
+		((idx++)) || true
+		[[ $idx -le 9 ]] && i=0$idx || i=$idx
+		echo -e "${red_code}[${cyan_code}$i${red_code}] ${white_code}- ${green_code}$_user${reset_code}"
+		_userPass+="\n${i}:${_user}"
+	done <<< "${_user_list}"
 echo ""
 num_user=$(awk -F: '$3>=1000 {print $1}' /etc/passwd | grep -v nobody | wc -l)
 echo ""
@@ -94,19 +81,19 @@ if [[ "$option" == "0" ]]; then
 elif [[ "$option" == "00" ]]; then
 	exit 99
 fi
-user=$(echo -e "${_userPass}" | grep -E "\b$option\b" | cut -d: -f2)
-if [[ -z $option ]]; then
+user=$(echo -e "${_userPass}" | awk -v o="$option" -F: 'NF>=2 && $1+0==o+0 {print $2; exit}')
+if [[ -z "$option" ]]; then
 	echo ""
 	error_msg "  Empty or invalid user!   "
 	echo ""
 	exit 1
-elif [[ -z $user ]]; then
+elif [[ -z "$user" ]]; then
 	echo ""
 	error_msg " Empty or invalid user! "
 	echo ""
 	exit 1
 else
-	if cat /etc/passwd |grep -w $user > /dev/null; then
+	if grep -wq "$user" /etc/passwd 2>/dev/null; then
 		echo ""
 		pkill -f "$user" > /dev/null 2>&1
 		sleep 1
@@ -116,15 +103,15 @@ else
 			exit 1
 		fi
 		success_msg " User $user removed successfully! "
-		grep -v ^$user[[:space:]] /root/users.db > /tmp/ph ; cat /tmp/ph > /root/users.db
-		rm /etc/SSHPlus/senha/$user 1>/dev/null 2>/dev/null
+		grep -v "^${user}[[:space:]]" "$database" > /tmp/ph && mv /tmp/ph "$database"
+		rm -f /etc/SSHPlus/senha/"$user" 2>/dev/null
 		if [[ -e /etc/openvpn/server.conf ]]; then
 			remove_ovp "$user"
 		fi
 		exit 0
-	elif [[ "$(cat "$database"| grep -w $user| wc -l)" -ne "0" ]]; then
-		ps x | grep $user | grep -v grep | grep -v pt > /tmp/rem
-		if [[ `grep -c $user /tmp/rem` -eq 0 ]]; then
+	elif [[ "$(grep -cw "$user" "$database" 2>/dev/null)" -ne "0" ]]; then
+		ps x 2>/dev/null | grep -F "$user" | grep -v grep | grep -v pt > /tmp/rem
+		if [[ "$(grep -c "$user" /tmp/rem 2>/dev/null)" -eq 0 ]]; then
 			userdel -f "$user" 2>/dev/null || deluser --force "$user" 2>/dev/null
 			if getent passwd "$user" >/dev/null 2>&1; then
 				error_msg " Failed to remove user $user. Run as root. "
@@ -132,14 +119,14 @@ else
 			fi
 			echo ""
 			success_msg " User $user removed successfully! "
-			grep -v ^$user[[:space:]] /root/users.db > /tmp/ph ; cat /tmp/ph > /root/users.db
-			rm /etc/SSHPlus/senha/$user 1>/dev/null 2>/dev/null
+			grep -v "^${user}[[:space:]]" "$database" > /tmp/ph && mv /tmp/ph "$database"
+			rm -f /etc/SSHPlus/senha/"$user" 2>/dev/null
 			if [[ -e /etc/openvpn/server.conf ]]; then
-				remove_ovp $user
-		    fi
-			exit 1
+				remove_ovp "$user"
+			fi
+			exit 0
 		else
-		    echo ""
+			echo ""
 			info_msg "User logged in. Disconnecting..."
 			pkill -f "$user" > /dev/null 2>&1
 			sleep 1
@@ -149,11 +136,11 @@ else
 				exit 1
 			fi
 			success_msg " User $user successfully removed! "
-			grep -v ^$user[[:space:]] /root/users.db > /tmp/ph ; cat /tmp/ph > /root/users.db
-			rm /etc/SSHPlus/senha/$user 1>/dev/null 2>/dev/null
+			grep -v "^${user}[[:space:]]" "$database" > /tmp/ph && mv /tmp/ph "$database"
+			rm -f /etc/SSHPlus/senha/"$user" 2>/dev/null
 			if [[ -e /etc/openvpn/server.conf ]]; then
-				remove_ovp $user
-		    fi
+				remove_ovp "$user"
+			fi
 			exit 1
 		fi
 	else
@@ -162,17 +149,13 @@ else
 		echo ""
 	fi
 fi
-elif [[ "$resp" = "2" ]]; then
+elif [[ "$resp" == "2" ]]; then
 	clear
-	tput setaf 7
-	tput setab 4
-	tput bold
-	printf '%32s%s%-13s\n' "Remove SSH User"
-	tput sgr0
+	print_header "   Remove SSH User   "
 	echo ""
 	color_echo_n "DO YOU REALLY WANT TO REMOVE ALL USERS? " "yellow"
 	color_echo_n "[y/n]: " "white"
-	read -r opc	
+	read -r opc
 	if [[ "$opc" = "y" ]] || [[ "$opc" = "Y" ]]; then
 		echo ""
 		color_echo "Removing users..." "yellow"
@@ -196,9 +179,6 @@ elif [[ "$resp" = "2" ]]; then
 		sleep 2
 		exit 0
 	fi
-elif [[ "$resp" = "3" ]]; then
-	# legacy: 3 was "BACK" before we removed duplicate
-	exit 0
 else
 	echo ""
 	error_msg "Invalid option!"

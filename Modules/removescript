@@ -1,0 +1,34 @@
+#!/bin/bash
+# removescript – remove SSH Plus Manager installation (menu option [19] REMOVE SCRIPT).
+
+# Load color helpers (install path vs dev path)
+if [[ -f /etc/SSHPlus/colors ]]; then
+	source /etc/SSHPlus/colors
+elif [[ -f /bin/colors ]]; then
+	source /bin/colors
+elif [[ -f "$(dirname "$0")/colors" ]]; then
+	source "$(dirname "$0")/colors"
+fi
+
+print_header "          REMOVE SCRIPT                 "
+echo ""
+error_msg "This will remove the SSH Plus Manager installation!"
+color_echo_n "Are you absolutely sure? [y/N]: " "red"
+read -r confirm
+if [[ "$confirm" =~ ^[Yy]$ ]]; then
+	color_echo_n "Type 'DELETE' to confirm: " "red"
+	read -r confirm2
+	if [[ "$confirm2" == "DELETE" ]]; then
+		color_echo "Removing installation..." "yellow"
+		rm -f /bin/menu 2>/dev/null
+		rm -f /bin/changepassword /bin/createuser /bin/expiredusers /bin/changeexpiration /bin/removeuser 2>/dev/null
+		rm -f /bin/sshmonitor /bin/changelimit /bin/connections /bin/multiport /bin/userinfo 2>/dev/null
+		rm -f /bin/rootpassword /bin/bannersetup /bin/vpstraffic /bin/vpsinfo /bin/rebootsystem /bin/restartservices 2>/dev/null
+		rm -f /bin/userbackup /bin/speedtest /bin/autorun /bin/updatescript /bin/removescript 2>/dev/null
+		success_msg "Script removed. Some configuration files may remain in /etc/SSHPlus"
+		sleep 3
+		exit 0
+	fi
+fi
+color_echo "Removal cancelled." "green"
+sleep 2
