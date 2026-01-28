@@ -34,19 +34,24 @@ echo ""
 
 if [[ -z "$need_update" ]]; then
 	msg_ok "Already up to date."
-	sleep 2
-	exec /bin/menu
-	exit 0
-fi
-
-msg_warn "Update available. This will download all manager files from the repository and overwrite local copies."
-color_echo_n "Continue? [y/N]: " "yellow"
-read -r confirm
-if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-	color_echo "Update cancelled." "green"
-	sleep 2
-	exec /bin/menu
-	exit 0
+	color_echo_n "Reinstall anyway? [y/N]: " "yellow"
+	read -r reinstall
+	if [[ ! "$reinstall" =~ ^[Yy]$ ]]; then
+		sleep 2
+		exec /bin/menu
+		exit 0
+	fi
+	msg_info "Reinstalling all files from repository..."
+else
+	msg_warn "Update available. This will download all manager files from the repository and overwrite local copies."
+	color_echo_n "Continue? [y/N]: " "yellow"
+	read -r confirm
+	if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+		color_echo "Update cancelled." "green"
+		sleep 2
+		exec /bin/menu
+		exit 0
+	fi
 fi
 
 [[ -d /etc/SSHPlus ]] || mkdir -p /etc/SSHPlus

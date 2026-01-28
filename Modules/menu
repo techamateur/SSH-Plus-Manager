@@ -377,6 +377,7 @@ menu() {
 		menu_option_n 19 "Update script"
 
 		echo ""
+		echo ""
 		printf "%b[00/q/Q] Quit%b\n" "$(c ui_menu_num)" "$(reset)"
 		hr
 		echo ""
