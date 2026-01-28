@@ -80,8 +80,10 @@ ensure_fetch_deps() {
 }
 
 # Main menu function
+# Layout: header_line (title + hostname), hr, 3 info rows (CPU/RAM/Disk | traffic; IP | uptime; ports | users),
+# optional update line, hr, sections USERS/MONITORING/SYSTEM/SETTINGS with menu_option/menu_option_tag,
+# [00/q/Q] Quit, hr, prompt. Refresh every 10s (read -t 10); numbering [01]-[19] maps to actions below.
 menu() {
-	# Main menu loop - runs until user exits
 	while true; do
 		# Detect operating system version
 		if [[ "$(grep -c "Ubuntu" /etc/issue.net 2>/dev/null)" = "1" ]]; then
@@ -250,168 +252,130 @@ menu() {
 		_cpu_pct=$(echo "${_usop}" | sed 's/%//' | awk '{printf "%.0f", $1+0}')
 		_disk_pct=$(echo "${_disk_percent}" | sed 's/%//' | awk '{printf "%.0f", $1+0}')
 		_ram_pct=${_ram_pct:-0}; _cpu_pct=${_cpu_pct:-0}; _disk_pct=${_disk_pct:-0}
-		_pct_color() {
-			local n="${1:-0}"; [[ "$n" -lt 60 ]] 2>/dev/null && { get_color_code ok; return; }; [[ "$n" -lt 85 ]] 2>/dev/null && { get_color_code warn; return; }; get_color_code danger;
+		_n_offline=$((_tuser - ${_onli:-0} - ${_expuser:-0}))
+		[[ $_n_offline -lt 0 ]] && _n_offline=0
+		# Sys traffic display: compact B/K/M/G one decimal
+		_sys_down_disp=$(awk -v b="${_rx_bytes:-0}" 'BEGIN{if(b>=1073741824) printf "%.1fG", b/1073741824; else if(b>=1048576) printf "%.1fM", b/1048576; else if(b>=1024) printf "%.0fK", b/1024; else printf "%dB", b+0}')
+		_sys_up_disp=$(awk -v b="${_tx_bytes:-0}" 'BEGIN{if(b>=1073741824) printf "%.1fG", b/1073741824; else if(b>=1048576) printf "%.1fM", b/1048576; else if(b>=1024) printf "%.0fK", b/1024; else printf "%dB", b+0}')
+		_sys_traffic_str="⬇ ${_sys_down_disp}  ⬆ ${_sys_up_disp}"
+		# Percent style: >=95 danger, >=85 warn, else value
+		_pct_style() {
+			local n="${1:-0}"
+			[[ "$n" -ge 95 ]] 2>/dev/null && { printf "%b" "$(c danger)"; return; }
+			[[ "$n" -ge 85 ]] 2>/dev/null && { printf "%b" "$(c warn)"; return; }
+			printf "%b" "$(c ui_value)"
+		}
+		# Info row: left (padded to 44), right
+		_info_row() {
+			local left="$1" right="$2"
+			printf "%b%-44s%b%b%s%b\n" "$(c ui_value)" "$left" "$(reset)" "$(c ui_value)" "$right" "$(reset)"
 		}
 
 		clear
 
-		blue_code=$(get_color_code "accent")
-		green_code=$(get_color_code "ok")
-		red_code=$(get_color_code "danger")
-		white_code=$(get_color_code "text")
-		yellow_code=$(get_color_code "warn")
-		cyan_code=$(get_color_code "accent")
-		reset_code=$(get_reset_code)
-		_line="${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
-		# Row 1: RAM / CPU / Disk with percent colors (<60 green, 60–84 yellow, >=85 red)
-		printf " %b🧠 RAM %s %b(%s)%b   %b⚙ CPU %sc %b(%s)%b   %b💾 Disk %s %b(%s)%b\n" \
-			"$cyan_code" "$_ram_total_short" "$(_pct_color "$_ram_pct")" "${_usor}" "$reset_code" \
-			"$cyan_code" "$_core" "$(_pct_color "$_cpu_pct")" "${_usop}" "$reset_code" \
-			"$cyan_code" "$_disk_total" "$(_pct_color "$_disk_pct")" "$_disk_percent" "$reset_code"
-		echo -e "$_line"
-		# Row 2: hostname, IP
-		printf " %b🖥 %-20s %b🌍 %s %b|%b %s\n" "$white_code" "$_hostname_display" "$cyan_code" "$_ipv4" "$white_code" "$cyan_code" "$_ipv6"
-		# Row 3: Sys vs User traffic
-		printf " %b🌐 Sys ↓%s ↑%s       %b📊 User ↓%s ↑%s  \n" "$cyan_code" "$_sys_down" "$_sys_up" "$cyan_code" "$_user_down" "$_user_up"
+		# Header: title left, hostname right
+		header_line "SSH PLUS MANAGER v${_ver_local}" "${_hostname_short:-$_hostname}"
+		hr
 		echo ""
-		# Row 4: ports
-		printf " %b🔌 %s\n" "$yellow_code" "$_ports"
-		echo -e "$_line"
-		# Row 5: users (👤 total 🟢on 🔴off ⚪exp 🟡expiring), uptime, version
-		_n_offline=$((_tuser - ${_onli:-0} - ${_expuser:-0}))
-		[[ $_n_offline -lt 0 ]] && _n_offline=0
-		_expiring_label="$_n_expiring"; [[ $_n_expiring -gt 0 ]] && _expiring_label="$_n_expiring (exp<7d)"
-		printf " %b👤 %s   %b🟢%s %b🔴%s %b⚪%s %b🟡%s%b      %b⏱ Uptime: %s   v%s\n" \
-			"$yellow_code" "$_tuser" "$green_code" "$_onli" "$red_code" "$_n_offline" "$white_code" "$_expuser" "$yellow_code" "$_expiring_label" "$reset_code" "$cyan_code" "$_uptime_short" "$_ver_local"
-		echo -e "$_line"
+
+		# Row 1: CPU / RAM / Disk % (colored by threshold) | sys traffic; left pad to 44 visible cols
+		_left1_len=$(( 7 + ${#_cpu_pct} + 4 + 9 + ${#_ram_pct} + 4 + 10 + ${#_disk_pct} + 1 ))
+		_pad1=$(( 44 - _left1_len )); [[ $_pad1 -lt 1 ]] && _pad1=1
+		_right1="🛜 ${_sys_traffic_str}"
+		printf "%b🧠 CPU %b%s%%%b  %b🧩 RAM %b%s%%%b  %b💾 DISK %b%s%%%b%*s%b%s%b\n" \
+			"$(c ui_value)" "$(_pct_style "$_cpu_pct")" "$_cpu_pct" "$(reset)" \
+			"$(c ui_value)" "$(_pct_style "$_ram_pct")" "$_ram_pct" "$(reset)" \
+			"$(c ui_value)" "$(_pct_style "$_disk_pct")" "$_disk_pct" "$(reset)" \
+			"$_pad1" "" "$(c ui_value)" "$_right1" "$(reset)"
+		# Row 2: IP | uptime
+		_left2="🌍 ${_ipv4}  |  IPv6 ${_ipv6}"
+		_right2="⏱ ${_uptime_short}"
+		_info_row "$_left2" "$_right2"
+		# Row 3: ports | users (● active ● inactive)
+		_left3="🔌 ${_ports}"
+		_right3="👤 ${_tuser}  ($(status_dot active) ${_onli} $(status_dot inactive) ${_n_offline})"
+		_info_row "$_left3" "$_right3"
+		echo ""
+
 		if [[ -n "$_ver_update" ]]; then
-			printf " %b[!] Update available: v%s — use [18] UPDATE SCRIPT%b\n" "$yellow_code" "$_ver_update" "$reset_code"
+			printf "%b⚠ Update available: v%s — use [19] Update script%b\n" "$(c ui_warn)" "$_ver_update" "$(reset)"
 		fi
+		hr
+		# section() adds leading newline
+		section "USERS"
+		menu_option 1 "Create user"
+		printf "                 "
+		menu_option 2 "Remove user"
+		menu_option 3 "Change password"
+		printf "             "
+		menu_option 4 "Set expiration"
+		menu_option 5 "Account limit"
+		printf "               "
+		menu_option 6 "Expired users"
 		echo ""
-		echo -e "${red_code}[${cyan_code}01${red_code}] ${white_code}• ${yellow_code}CREATE USER ${red_code}     [${cyan_code}09${red_code}] ${white_code}• ${yellow_code}SPEEDTEST ${reset_code}"
-		echo -e "${red_code}[${cyan_code}02${red_code}] ${white_code}• ${yellow_code}REMOVE USER ${red_code}     [${cyan_code}10${red_code}] ${white_code}• ${yellow_code}BANNER ${reset_code}"
-		echo -e "${red_code}[${cyan_code}03${red_code}] ${white_code}• ${yellow_code}MONITOR USERS ${red_code}   [${cyan_code}11${red_code}] ${white_code}• ${yellow_code}VPS TRAFFIC ${reset_code}"
-		echo -e "${red_code}[${cyan_code}04${red_code}] ${white_code}• ${yellow_code}EXPIRATION DATE ${red_code} [${cyan_code}12${red_code}] ${white_code}• ${yellow_code}BACKUP ${reset_code}"
-		echo -e "${red_code}[${cyan_code}05${red_code}] ${white_code}• ${yellow_code}ACCOUNT LIMIT ${red_code}   [${cyan_code}13${red_code}] ${white_code}• ${yellow_code}VPS INFO ${reset_code}"
-		echo -e "${red_code}[${cyan_code}06${red_code}] ${white_code}• ${yellow_code}USER PASSWORD ${red_code}   [${cyan_code}14${red_code}] ${white_code}• ${yellow_code}REBOOT SYSTEM ${reset_code}"
-		echo -e "${red_code}[${cyan_code}07${red_code}] ${white_code}• ${yellow_code}EXPIRED USERS ${red_code}   [${cyan_code}15${red_code}] ${white_code}• ${yellow_code}RESTART SERVICES ${reset_code}"
-		echo -e "${red_code}[${cyan_code}08${red_code}] ${white_code}• ${yellow_code}CONNECTIONS ${red_code}     [${cyan_code}16${red_code}] ${white_code}• ${yellow_code}ROOT PASSWORD ${reset_code}"
-		echo -e "${red_code}[${cyan_code}17${red_code}] ${white_code}• ${yellow_code}AUTO RUN ${red_code}        [${cyan_code}18${red_code}] ${white_code}• ${yellow_code}UPDATE SCRIPT ${reset_code}"
-		echo -e "${red_code}[${cyan_code}19${red_code}] ${white_code}• ${yellow_code}REMOVE SCRIPT ${reset_code}"
+
+		section "MONITORING"
+		menu_option 7 "Monitor users"
+		printf "               "
+		menu_option 8 "Speedtest"
+		menu_option 9 "VPS traffic"
+		printf "                 "
+		menu_option 10 "VPS info"
 		echo ""
-		echo -e "${red_code}[${cyan_code}00${red_code}] ${white_code}• ${yellow_code}EXIT ${green_code}<${yellow_code}<${red_code}<${reset_code}"
+
+		section "SYSTEM"
+		menu_option 11 "Restart services"
+		printf "            "
+		menu_option 12 "Reboot system"
+		menu_option 13 "Root password"
+		printf "               "
+		menu_option_tag 14 "Remove script" "DANGER" ui_danger
 		echo ""
-		echo -e "${blue_code}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset_code}"
+
+		section "SETTINGS"
+		menu_option 15 "Connections"
+		printf "                 "
+		menu_option 16 "Banner"
+		menu_option 17 "Backup"
+		printf "                      "
+		menu_option 18 "Autorun"
+		menu_option 19 "Update script"
 		echo ""
-		printf "%b%s%b" "$(c ui_prompt)" "PLEASE SELECT FROM OPTIONS " "$(reset)"
-		printf "%b%s%b" "$(c ui_warn)" "?" "$(reset)"
-		printf "%b%s%b" "$(c ui_danger)" "?" "$(reset)"
-		printf "%b%s%b" "$(c ui_value)" " : " "$(reset)"
-		read -r x
+
+		printf "%b[00/q/Q] Quit%b\n" "$(c ui_menu_num)" "$(reset)"
+		hr
+		echo ""
+		prompt "Select option: "
+		read -t 10 -r x || x=""
+		[[ "$x" == "" ]] && continue
 
 		case "$x" in
-		1 | 01)
-			clear
-			createuser
-			echo ""
-			printf "%b%s%b" "$(c ui_warn)" "Press ENTER to return to menu (copy the user info above first)..." "$(reset)"
-			read -r
-			;;
-		2 | 02)
-			clear
-			removeuser
-			_ret=$?
-			[[ $_ret -eq 99 ]] && exit 0
-			sleep 3
-			;;
-		3 | 03)
-			clear
-			sshmonitor
-			;;
-		4 | 04)
-			clear
-			changeexpiration
-			_ret=$?
-			[[ $_ret -eq 99 ]] && exit 0
-			sleep 3
-			;;
-		5 | 05)
-			clear
-			changelimit
-			_ret=$?
-			[[ $_ret -eq 99 ]] && exit 0
-			sleep 3
-			;;
-		6 | 06)
-			clear
-			changepassword
-			_ret=$?
-			[[ $_ret -eq 99 ]] && exit 0
-			sleep 3
-			;;
-		7 | 07)
-			clear
-			expiredusers
-			_ret=$?
-			[[ $_ret -eq 99 ]] && exit 0
-			;;
-		8 | 08)
-			connections
-			exit 0
-			;;
-		9 | 09)
-			clear
-			speedtest
-			;;
-		10)
-			clear
-			bannersetup
-			;;
-		11)
-			vpstraffic
-			;;
-		12)
-			clear
-			userbackup
-			;;
-		13)
-			clear
-			vpsinfo
-			;;
-		14)
-			clear
-			rebootsystem
-			;;
-		15)
-			clear
-			restartservices
-			sleep 5
-			;;
-		16)
-			clear
-			rootpassword
-			sleep 5
-			;;
-		17)
-			autorun
-			;;
-		18)
-			updatescript
-			;;
-		19)
-			clear
-			exec removescript
-			;;
-		0 | 00)
-			# Exit completely
+		1 | 01) clear; createuser; echo ""; printf "%b%s%b" "$(c ui_warn)" "Press ENTER to return to menu (copy the user info above first)..." "$(reset)"; read -r ;;
+		2 | 02) clear; removeuser; _ret=$?; [[ $_ret -eq 99 ]] && exit 0; sleep 3 ;;
+		3 | 03) clear; changepassword; _ret=$?; [[ $_ret -eq 99 ]] && exit 0; sleep 3 ;;
+		4 | 04) clear; changeexpiration; _ret=$?; [[ $_ret -eq 99 ]] && exit 0; sleep 3 ;;
+		5 | 05) clear; changelimit; _ret=$?; [[ $_ret -eq 99 ]] && exit 0; sleep 3 ;;
+		6 | 06) clear; expiredusers; _ret=$?; [[ $_ret -eq 99 ]] && exit 0; ;;
+		7 | 07) clear; sshmonitor ;;
+		8 | 08) clear; speedtest ;;
+		9 | 09) vpstraffic ;;
+		10) clear; vpsinfo ;;
+		11) clear; restartservices; sleep 5 ;;
+		12) clear; rebootsystem ;;
+		13) clear; rootpassword; sleep 5 ;;
+		14) clear; exec removescript ;;
+		15) connections; exit 0 ;;
+		16) clear; bannersetup ;;
+		17) clear; userbackup ;;
+		18) autorun ;;
+		19) updatescript ;;
+		0 | 00 | q | Q)
 			printf "%b%s%b\n" "$(c ui_danger)" "Exiting..." "$(reset)"
 			sleep 2
 			clear
 			exit 0
 			;;
 		*)
-			echo ""
 			msg_err "Invalid option !"
 			sleep 2
 			;;

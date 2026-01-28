@@ -20,9 +20,12 @@ _is_tty() { [[ -t 1 ]]; }
 # Do not require a TTY or non-empty TERM; many SSH/screen sessions still support color.
 _no_color() {
   [[ -n "${NO_COLOR:-}" ]] && return 0
-  [[ "${TERM:-}" == "dumb" ]] && return 0
+  [[ "${TERM:-}" == "dumb" || -z "${TERM:-}" ]] && return 0
+  [[ -n "${FORCE_COLOR:-}" ]] && return 1
+  _is_tty || return 0
   return 1
 }
+
 
 # Support truecolor if terminal claims it
 _has_truecolor() {
@@ -181,6 +184,15 @@ title_line() {
   # Big title + rule
   printf "%b%s%b\n" "$(c ui_title)" "$1" "$(reset)"
   hr
+}
+
+# header_line "Left title" "right value" — same line, right part right-aligned to terminal width
+header_line() {
+  local left="$1" right="$2" cols pad
+  cols="$(term_cols)"
+  pad=$(( cols - ${#left} - ${#right} ))
+  [[ $pad -lt 1 ]] && pad=1
+  printf "%b%s%b%*s%b%s%b\n" "$(c ui_title)" "$left" "$(reset)" "$pad" "" "$(c ui_value)" "$right" "$(reset)"
 }
 
 kv() {
