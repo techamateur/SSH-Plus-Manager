@@ -161,8 +161,9 @@ reset() { _no_color && printf "" || printf "%s" "$RESET"; }
 term_cols() { tput cols 2>/dev/null || printf "80"; }
 
 repeat_char() {
-  local ch="$1" n="$2"
-  printf "%*s" "$n" "" | tr ' ' "$ch"
+  local ch="$1" n="$2" i
+  # Loop ensures multi-byte UTF-8 (e.g. ━) repeats correctly; tr can mangle it
+  for (( i = 0; i < n; i++ )); do printf "%s" "$ch"; done
 }
 
 # -------------------- primitives --------------------

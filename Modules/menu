@@ -298,7 +298,9 @@ menu() {
 
 		# Header: title left, hostname right (fallback if hostname empty)
 		_header_right="${_hostname_short:-$_hostname}"
-		[[ -z "$_header_right" ]] && _header_right="${HOSTNAME:-—}"
+		[[ -z "$_header_right" ]] && _header_right="${HOSTNAME:-}"
+		[[ -z "$_header_right" ]] && _header_right="$(cat /etc/hostname 2>/dev/null || true)"
+		[[ -z "$_header_right" ]] && _header_right="—"
 		header_line "SSH PLUS MANAGER v${_ver_local}" "$_header_right"
 		hr
 		echo ""
@@ -317,7 +319,7 @@ menu() {
 		_right2="⏱ ${_uptime_short}"
 		_info_row "$_left2" "$_right2"
 		# Row 3: ports | users (● active ● inactive)
-		_left3="🔌 ${_ports}"
+		_left3="🪝 ${_ports}"
 		_right3="👤 ${_tuser}  ($(status_dot active) ${_onli} $(status_dot inactive) ${_n_offline})"
 		_info_row "$_left3" "$_right3"
 		echo ""
@@ -352,7 +354,7 @@ menu() {
 		menu_option 12 "Reboot system"
 		menu_option_n 13 "Root password"
 		printf "               "
-		menu_option_n 14 "⚠️ Remove script ⚠️"
+		menu_option_n 14 "Remove script ⚠️"
 
 		section "SETTINGS"
 		menu_option_n 15 "Connections"
@@ -363,6 +365,7 @@ menu() {
 		menu_option 18 "Autorun"
 		menu_option 19 "Update script"
 
+		printf "                      "
 		printf "%b[00/q/Q] Quit%b\n" "$(c ui_menu_num)" "$(reset)"
 		hr
 		echo ""
