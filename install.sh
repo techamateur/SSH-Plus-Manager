@@ -237,30 +237,12 @@ _ip_val=$(wget -qO- --timeout=5 ipv4.icanhazip.com 2>/dev/null)
 
 msg_ok "Key verified."
 
-# Check if user database already exists
-if [[ -f "$HOME/users.db" ]]; then
-    blue_code=$(get_color_code "blue")
-    reset_code=$(get_reset_code)
-    echo ""
-    echo -e "${blue_code}═══════════════════════════════════════════════════════════════════════${reset_code}"
-    color_echo "An existing user database (users.db) was found." "yellow"
-    color_echo "Keep it and preserve connection limits, or create a new one?" "yellow"
-    menu_option "1" "Keep current database" "red" "yellow"
-    menu_option "2" "Create new database" "red" "yellow"
-    echo -e "${blue_code}═══════════════════════════════════════════════════════════════════════${reset_code}"
-    color_echo_n "Choice [1-2]: " "green"
-    read -r -e -i 1 optiondb
-else
-    # No existing database, create a new one
-    # Extract all users with UID >= 500 (regular users) from /etc/passwd
-    # Format: username connection_limit (default is 1)
-    awk -F : '$3 >= 500 { print $1 " 1" }' /etc/passwd | grep -v '^nobody' > "$HOME/users.db"
-fi
-
-# If user chose option 2, create a new database
-if [[ "$optiondb" = '2' ]]; then
-    awk -F : '$3 >= 500 { print $1 " 1" }' /etc/passwd | grep -v '^nobody' > "$HOME/users.db"
-fi
+# Initialize centralized DB + session log (single source of truth)
+# - users.db is created empty if missing (no migration from legacy formats)
+# - sessions.log is created empty if missing (append-only audit log)
+mkdir -p "${HOME:-/root}" 2>/dev/null || true
+[[ -f "${HOME:-/root}/users.db" ]] || { : > "${HOME:-/root}/users.db"; chmod 600 "${HOME:-/root}/users.db" 2>/dev/null || true; }
+[[ -f "${HOME:-/root}/sessions.log" ]] || { : > "${HOME:-/root}/sessions.log"; chmod 600 "${HOME:-/root}/sessions.log" 2>/dev/null || true; }
 # Start system update process
 banner_info " Installing "
 color_echo "Updating system packages..." "green"

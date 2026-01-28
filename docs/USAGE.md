@@ -59,7 +59,7 @@ In submenus, **0** usually means “back” and **00** means “exit entirely”
 
 - Prompts for **username** (0 = back, 00 = exit).
 - You set **password**, **expiration date**, and **connection limit**.
-- User is created with `useradd`, expiry with `chage`, limit stored in `/root/users.db`.
+- User is created with `useradd`, expiry is applied with `chage`, and all user state is stored in the centralized `$HOME/users.db`.
 - After creation, IP, user, password, expiry, and limit are shown so you can copy them.
 
 ### [02] REMOVE USER
@@ -80,7 +80,7 @@ In submenus, **0** usually means “back” and **00** means “exit entirely”
 ### [05] ACCOUNT LIMIT
 
 - Pick a user and set maximum simultaneous connections (e.g. 1, 2, 5).
-- Stored in `/root/users.db` and used by the manager’s connection logic.
+- Stored in `$HOME/users.db` (single source of truth) and used by the manager’s connection logic.
 
 ### [06] USER PASSWORD
 
@@ -155,9 +155,8 @@ In submenus, **0** usually means “back” and **00** means “exit entirely”
 | `/etc/SSHPlus/` | Config, colors, optional open.py/proxy.py |
 | `/etc/SSHPlus/version` | Installed version (for update check) |
 | `/etc/SSHPlus/repo_url` | Optional custom repo URL for updates |
-| `/root/users.db` | Username and connection limit per line |
-| `/etc/SSHPlus/senha/` | Stored passwords (if used) |
-| `/etc/SSHPlus/Exp` | Expired-users list |
+| `$HOME/users.db` | **Single source of truth**: user records (8 space-separated fields per user) |
+| `$HOME/sessions.log` | Append-only session audit log (one line per completed session) |
 | `/etc/IP` | Cached server IP (used in banner and “Create user” output) |
 | `/etc/banner` | SSH login banner text |
 

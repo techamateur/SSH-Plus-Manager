@@ -57,7 +57,7 @@ color_echo "Fetching files from repository..." "green"
 echo ""
 
 updated=0 failed=0
-for spec in "menu:/bin/menu" "changepassword:/bin/changepassword" "createuser:/bin/createuser" "expiredusers:/bin/expiredusers" "changeexpiration:/bin/changeexpiration" "removeuser:/bin/removeuser" "changelimit:/bin/changelimit" "sshmonitor:/bin/sshmonitor" "connections:/bin/connections" "multiport:/bin/multiport" "userinfo:/bin/userinfo" "rootpassword:/bin/rootpassword" "bannersetup:/bin/bannersetup" "vpstraffic:/bin/vpstraffic" "vpsinfo:/bin/vpsinfo" "rebootsystem:/bin/rebootsystem" "restartservices:/bin/restartservices" "userbackup:/bin/userbackup" "speedtest:/bin/speedtest" "autorun:/bin/autorun" "updatescript:/bin/updatescript" "removescript:/bin/removescript" "colors:/etc/SSHPlus/colors" "open.py:/etc/SSHPlus/open.py" "proxy.py:/etc/SSHPlus/proxy.py"; do
+for spec in "menu:/bin/menu" "changepassword:/bin/changepassword" "createuser:/bin/createuser" "expiredusers:/bin/expiredusers" "changeexpiration:/bin/changeexpiration" "removeuser:/bin/removeuser" "changelimit:/bin/changelimit" "sshmonitor:/bin/sshmonitor" "connections:/bin/connections" "multiport:/bin/multiport" "userinfo:/bin/userinfo" "serversettings:/bin/serversettings" "bannersetup:/bin/bannersetup" "vpstraffic:/bin/vpstraffic" "vpsinfo:/bin/vpsinfo" "rebootsystem:/bin/rebootsystem" "restartservices:/bin/restartservices" "userbackup:/bin/userbackup" "speedtest:/bin/speedtest" "autorun:/bin/autorun" "updatescript:/bin/updatescript" "removescript:/bin/removescript" "colors:/etc/SSHPlus/colors" "db:/etc/SSHPlus/db" "open.py:/etc/SSHPlus/open.py" "proxy.py:/etc/SSHPlus/proxy.py"; do
 	fname="${spec%%:*}"
 	dest="${spec##*:}"
 	url="${repo_url}/Modules/${fname}"

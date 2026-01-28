@@ -10,7 +10,15 @@ elif [[ -f "$(dirname "$0")/colors" ]]; then
 	source "$(dirname "$0")/colors"
 fi
 
-database="/root/users.db"
+# Load centralized DB + logging helpers
+if [[ -f /etc/SSHPlus/db ]]; then
+	source /etc/SSHPlus/db
+elif [[ -f /bin/db ]]; then
+	source /bin/db
+elif [[ -f "$(dirname "$0")/db" ]]; then
+	source "$(dirname "$0")/db"
+fi
+
 clear
 menu_option "1" "VIEW USER LIST" "red" "yellow"
 menu_option "0" "BACK TO MENU" "red" "yellow"
@@ -32,18 +40,16 @@ reset_code=$(get_reset_code)
 _userlist=$(awk -F: '$3>=1000 {print $1}' /etc/passwd 2>/dev/null | grep -v nobody | sort)
 while read -r user; do
 	[[ -z "$user" ]] && continue
-	if [[ -f "$database" ]] && grep -qw "$user" "$database" 2>/dev/null; then
-		lim=$(grep -w "$user" "$database" 2>/dev/null | cut -d' ' -f2)
-	else
-		lim="1"
+	_line="$(sshplus_db_get_line "$user" 2>/dev/null || true)"
+	if [[ -z "${_line:-}" ]]; then
+		sshplus_with_db_lock sshplus_db_ensure_user "$user" >/dev/null 2>&1 || true
+		_line="$(sshplus_db_get_line "$user" 2>/dev/null || true)"
 	fi
-	if [[ -f /etc/SSHPlus/senha/"$user" ]]; then
-		senha=$(head -1 /etc/SSHPlus/senha/"$user" 2>/dev/null | tr -d '\r\n')
-	else
-		senha="Null"
-	fi
-	exp_raw=$(chage -l "$user" 2>/dev/null | awk -F: '/Account expires/{print $2}' | xargs)
-	if [[ "$exp_raw" == "never" ]] || [[ -z "$exp_raw" ]]; then
+	lim="$(awk '{print $2}' <<<"${_line:-}" 2>/dev/null)"; [[ -z "${lim:-}" ]] && lim="1"
+	senha="$(awk '{print $8}' <<<"${_line:-}" 2>/dev/null)"; [[ -z "${senha:-}" ]] && senha="sha256:UNKNOWN"
+	[[ ${#senha} -gt 14 ]] && senha="${senha:0:12}.."
+	exp_raw="$(awk '{print $3}' <<<"${_line:-}" 2>/dev/null)"; [[ -z "${exp_raw:-}" ]] && exp_raw="never"
+	if [[ "$exp_raw" == "never" ]]; then
 		data="${yellow_code}Never${reset_code}"
 	else
 		exp_ymd=$(date -d "$exp_raw" +"%Y%m%d" 2>/dev/null)
@@ -63,7 +69,20 @@ done <<< "$_userlist"
 echo ""
 _tuser=$(awk -F: '$3>=1000 {print $1}' /etc/passwd | grep -v nobody | wc -l)
 _ons=$(ps -x | grep sshd | grep -v root | grep priv | wc -l)
-[[ "$(cat /etc/SSHPlus/Exp)" != "" ]] && _expuser=$(cat /etc/SSHPlus/Exp) || _expuser="0"
+_expuser=0
+today_ymd=$(date +"%Y%m%d")
+while read -r _u; do
+	[[ -z "$_u" ]] && continue
+	_line="$(sshplus_db_get_line "$_u" 2>/dev/null || true)"
+	if [[ -z "${_line:-}" ]]; then
+		sshplus_with_db_lock sshplus_db_ensure_user "$_u" >/dev/null 2>&1 || true
+		_line="$(sshplus_db_get_line "$_u" 2>/dev/null || true)"
+	fi
+	_exp="$(awk '{print $3}' <<<"${_line:-}" 2>/dev/null)"
+	[[ -z "${_exp:-}" || "$_exp" == "never" ]] && continue
+	_exp_ymd=$(date -d "$_exp" +"%Y%m%d" 2>/dev/null)
+	[[ -n "$_exp_ymd" && "$today_ymd" -ge "$_exp_ymd" ]] && _expuser=$((_expuser + 1))
+done <<<"$(awk -F: '$3>=1000 {print $1}' /etc/passwd 2>/dev/null | grep -v nobody)"
 [[ -e /etc/openvpn/openvpn-status.log ]] && _onop=$(grep -c "10.8.0" /etc/openvpn/openvpn-status.log) || _onop="0"
 if [[ -e /etc/default/dropbear ]]; then
 	_drp=$(ps aux 2>/dev/null | grep -c '[d]ropbear' || echo "0")

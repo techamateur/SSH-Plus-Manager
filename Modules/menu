@@ -18,6 +18,15 @@ elif [[ -f /etc/SSHPlus/colors ]]; then
 elif [[ -f /bin/colors ]]; then
 	source /bin/colors
 fi
+
+# Load centralized DB + logging helpers (single source of truth)
+if [[ -f "${_mod_dir}/db" ]]; then
+	source "${_mod_dir}/db"
+elif [[ -f /etc/SSHPlus/db ]]; then
+	source /etc/SSHPlus/db
+elif [[ -f /bin/db ]]; then
+	source /bin/db
+fi
 unset -v _mod_dir _repo_root
 
 # If loaded colors doesn't provide header_line (e.g. old installed copy), define it so header layout works
@@ -125,11 +134,19 @@ menu() {
 		_ons=$(ps -x | grep sshd | grep -v root | grep priv | wc -l)
 
 		# Get expired users count
-		if [[ -f /etc/SSHPlus/Exp ]] && [[ -s /etc/SSHPlus/Exp ]]; then
-			_expuser=$(cat /etc/SSHPlus/Exp)
-		else
-			_expuser="0"
-		fi
+		_expuser=0
+		_today_ymd=$(date +"%Y%m%d")
+		for _u in $(awk -F: '$3>=1000 {print $1}' /etc/passwd 2>/dev/null | grep -v nobody); do
+			_line="$(sshplus_db_get_line "$_u" 2>/dev/null || true)"
+			if [[ -z "${_line:-}" ]]; then
+				sshplus_with_db_lock sshplus_db_ensure_user "$_u" >/dev/null 2>&1 || true
+				_line="$(sshplus_db_get_line "$_u" 2>/dev/null || true)"
+			fi
+			_exp="$(awk '{print $3}' <<<"${_line:-}" 2>/dev/null)"
+			[[ -z "${_exp:-}" || "$_exp" == "never" ]] && continue
+			_exp_ymd=$(date -d "$_exp" +"%Y%m%d" 2>/dev/null)
+			[[ -n "$_exp_ymd" && "$_today_ymd" -ge "$_exp_ymd" ]] && _expuser=$((_expuser + 1))
+		done
 
 		# Count OpenVPN users
 		if [[ -e /etc/openvpn/openvpn-status.log ]]; then
@@ -248,13 +265,7 @@ menu() {
 			[[ "$_latest" = "$_ver_remote" ]] && _ver_update="$_ver_remote"
 		fi
 
-		# Compact header: user traffic sum, uptime, percent parsing
-		_user_rx=0 _user_tx=0
-		[[ -f /var/lib/SSHPlus/traffic.db ]] && while read -r _ _r _w; do
-			_user_rx=$((_user_rx + ${_r:-0})); _user_tx=$((_user_tx + ${_w:-0}))
-		done < <(awk '{print $1,$2,$3}' /var/lib/SSHPlus/traffic.db 2>/dev/null)
-		_user_down=$(awk -v b="${_user_rx:-0}" 'BEGIN{if(b>=1073741824) printf "%.1fG", b/1073741824; else if(b>=1048576) printf "%.1fM", b/1048576; else if(b>=1024) printf "%.0fK", b/1024; else printf "%dB", b+0}')
-		_user_up=$(awk -v b="${_user_tx:-0}" 'BEGIN{if(b>=1073741824) printf "%.1fG", b/1073741824; else if(b>=1048576) printf "%.1fM", b/1048576; else if(b>=1024) printf "%.0fK", b/1024; else printf "%dB", b+0}')
+		# Compact header: uptime, percent parsing
 		_sys_down=$(awk "BEGIN {printf \"%.0fM\", ${_rx_bytes:-0}/1024/1024}" 2>/dev/null)
 		_sys_up=$(awk "BEGIN {printf \"%.0fM\", ${_tx_bytes:-0}/1024/1024}" 2>/dev/null)
 		[[ -z "$_sys_down" || "$_sys_down" = "0M" ]] && _sys_down="${_rx_mb:-0}M"
@@ -352,7 +363,7 @@ menu() {
 		menu_option_n 11 "Restart services"
 		printf "            "
 		menu_option 12 "Reboot system"
-		menu_option_n 13 "Root password"
+		menu_option_n 13 "Server settings"
 		printf "               "
 		menu_option_n 14 "Remove script ⚠️"
 
@@ -386,7 +397,7 @@ menu() {
 		10) clear; vpsinfo ;;
 		11) clear; restartservices; sleep 5 ;;
 		12) clear; rebootsystem ;;
-		13) clear; rootpassword; sleep 5 ;;
+		13) clear; serversettings; sleep 5 ;;
 		14) clear; exec removescript ;;
 		15) connections; exit 0 ;;
 		16) clear; bannersetup ;;

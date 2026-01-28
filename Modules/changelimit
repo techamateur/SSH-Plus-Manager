@@ -10,26 +10,19 @@ elif [[ -f "$(dirname "$0")/colors" ]]; then
 	source "$(dirname "$0")/colors"
 fi
 
+# Load centralized DB + logging helpers
+if [[ -f /etc/SSHPlus/db ]]; then
+	source /etc/SSHPlus/db
+elif [[ -f /bin/db ]]; then
+	source /bin/db
+elif [[ -f "$(dirname "$0")/db" ]]; then
+	source "$(dirname "$0")/db"
+fi
+
 banner_info "   Change limit of simultaneous connections   "
-database="/root/users.db"
-if [[ ! -f "$database" ]]; then
-	echo ""
-	msg_err "$database file not found"
-	echo ""
-	exit 1
-else
-	# Keep users.db in sync: remove entries for users that no longer exist in /etc/passwd
-	_existing=$(awk -F: '$3>=1000 {print $1}' /etc/passwd 2>/dev/null | grep -v nobody)
-	_tmp=$(mktemp 2>/dev/null || echo /tmp/ulim_$$)
-	: > "$_tmp"
-	while read -r u lim _; do
-		echo "$_existing" | grep -qxF "$u" 2>/dev/null && echo "$u $lim" >> "$_tmp"
-	done < "$database" 2>/dev/null
-	[[ -s "$_tmp" ]] && mv "$_tmp" "$database" || true
-	rm -f "$_tmp" 2>/dev/null
-	echo ""
-	color_echo "LIST OF USERS AND THEIR LIMITS:" "yellow"
-	echo ""
+echo ""
+color_echo "LIST OF USERS AND THEIR LIMITS:" "yellow"
+echo ""
 	_user_list=$(awk -F: '$3>=1000 {print $1}' /etc/passwd 2>/dev/null | grep -v nobody)
 	idx=0
 	unset _userPass
@@ -38,11 +31,13 @@ else
 		((idx++)) || true
 		_oP=$idx
 		[[ $idx -le 9 ]] && i=0$idx || i=$idx
-		if [[ "$(grep -wc "$_user" "$database" 2>/dev/null)" != "0" ]]; then
-			limit=$(grep -w "$_user" "$database" 2>/dev/null | cut -d' ' -f2)
-		else
-			limit='1'
+		_line="$(sshplus_db_get_line "$_user" 2>/dev/null || true)"
+		if [[ -z "${_line:-}" ]]; then
+			sshplus_with_db_lock sshplus_db_ensure_user "$_user" >/dev/null 2>&1 || true
+			_line="$(sshplus_db_get_line "$_user" 2>/dev/null || true)"
 		fi
+		limit="$(awk '{print $2}' <<<"${_line:-}" 2>/dev/null)"
+		[[ -z "${limit:-}" ]] && limit='1'
 		red_code=$(get_color_code "red")
 		cyan_code=$(get_color_code "cyan")
 		white_code=$(get_color_code "white")
@@ -121,10 +116,7 @@ else
 						echo ""
 						exit 1
 					else
-						grep -v ^$usuario[[:space:]] /root/users.db > /tmp/a
-						sleep 1
-						mv /tmp/a /root/users.db
-						echo $usuario $sshnum >> /root/users.db
+						sshplus_with_db_lock sshplus_db_set_limit "$usuario" "$sshnum" >/dev/null 2>&1 || true
 						# Use success message function - handles fallback internally
 						echo ""
 						msg_ok "Limit applied to user $usuario was $sshnum"

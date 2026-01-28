@@ -1,0 +1,240 @@
+#!/bin/bash
+# serversettings – server settings submenu (menu option [13] SERVER SETTINGS).
+
+# Load color helpers (install path vs dev path)
+if [[ -f /etc/SSHPlus/colors ]]; then
+	source /etc/SSHPlus/colors
+elif [[ -f /bin/colors ]]; then
+	source /bin/colors
+elif [[ -f "$(dirname "$0")/colors" ]]; then
+	source "$(dirname "$0")/colors"
+fi
+
+SERVER_NAME_FILE="$(dirname "$0")/SERVER_NAME"
+PRIVACY_CONF="/etc/SSHPlus/privacy.conf"
+
+change_root_password() {
+	clear
+	banner_info "         CHANGE ROOT PASSWORD           "
+	echo ""
+	color_echo_n "Enter new root password: " "yellow"
+	read -r -s new_pass
+	echo ""
+	color_echo_n "Confirm new root password: " "yellow"
+	read -r -s confirm_pass
+	echo ""
+
+	if [[ -z "$new_pass" ]]; then
+		msg_err "Password cannot be empty!"
+		sleep 2
+		return 1
+	fi
+	if [[ "$new_pass" != "$confirm_pass" ]]; then
+		msg_err "Passwords do not match!"
+		sleep 2
+		return 1
+	fi
+	if [[ ${#new_pass} -lt 4 ]]; then
+		msg_err "Password must be at least 4 characters!"
+		sleep 2
+		return 1
+	fi
+
+	if echo "root:$new_pass" | chpasswd 2>/dev/null; then
+		msg_ok "Root password changed successfully!"
+	else
+		msg_err "Failed to change root password. Run as root."
+	fi
+	sleep 2
+}
+
+change_timezone() {
+	clear
+	banner_info "         DATETIME & TIMEZONE           "
+	echo ""
+	local current_tz="unknown"
+	if command -v timedatectl >/dev/null 2>&1; then
+		current_tz=$(timedatectl 2>/dev/null | awk -F': ' '/Time zone/ {print $2}' | awk '{print $1}')
+	elif [[ -L /etc/localtime ]]; then
+		current_tz=$(readlink /etc/localtime 2>/dev/null | sed 's#.*/zoneinfo/##')
+	fi
+	color_echo "Current timezone: ${current_tz}" "cyan"
+	local default_tz="Asia/Tehran"
+	echo ""
+	color_echo_n "Enter timezone (e.g. Asia/Tehran) " "green"
+	color_echo_n "[${default_tz}]: " "yellow"
+	read -r tz
+	[[ -z "$tz" ]] && tz="$default_tz"
+
+	if command -v timedatectl >/dev/null 2>&1; then
+		if timedatectl list-timezones 2>/dev/null | grep -qx "$tz"; then
+			if timedatectl set-timezone "$tz" >/dev/null 2>&1; then
+				msg_ok "Timezone set to $tz"
+			else
+				msg_err "Failed to set timezone. Run as root."
+			fi
+		else
+			msg_err "Invalid timezone: $tz"
+		fi
+	else
+		# Fallback: try linking /etc/localtime
+		if [[ -f "/usr/share/zoneinfo/$tz" ]]; then
+			if ln -sf "/usr/share/zoneinfo/$tz" /etc/localtime 2>/dev/null; then
+				msg_ok "Timezone set to $tz (via /etc/localtime)"
+			else
+				msg_err "Failed to set timezone. Run as root."
+			fi
+		else
+			msg_err "Timezone file not found: /usr/share/zoneinfo/$tz"
+		fi
+	fi
+	sleep 2
+}
+
+change_keyboard_layout() {
+	clear
+	banner_info "          KEYBOARD LAYOUT              "
+	echo ""
+	local current="unknown"
+	if command -v localectl >/dev/null 2>&1; then
+		current=$(localectl status 2>/dev/null | awk -F':' '/VC Keymap/ {gsub(/^ +/,"",$2); print $2}' | head -1)
+	fi
+	color_echo "Current layout: ${current}" "cyan"
+	local default_layout="us"
+	echo ""
+	color_echo_n "Enter keyboard layout (e.g. us, ir) " "green"
+	color_echo_n "[${default_layout}]: " "yellow"
+	read -r layout
+	[[ -z "$layout" ]] && layout="$default_layout"
+
+	if command -v localectl >/dev/null 2>&1; then
+		if localectl set-keymap "$layout" >/dev/null 2>&1 || localectl set-x11-keymap "$layout" >/dev/null 2>&1; then
+			msg_ok "Keyboard layout set to $layout"
+		else
+			msg_err "Failed to set layout via localectl. Run as root."
+		fi
+	else
+		# Fallback to loadkeys (console only)
+		if command -v loadkeys >/dev/null 2>&1; then
+			if loadkeys "$layout" >/dev/null 2>&1; then
+				msg_ok "Keyboard layout loaded: $layout"
+			else
+				msg_err "Failed to load layout with loadkeys. Layout may be invalid."
+			fi
+		else
+			msg_err "Neither localectl nor loadkeys found; cannot change layout."
+		fi
+	fi
+	sleep 2
+}
+
+_suggest_server_name() {
+	[[ ! -f "$SERVER_NAME_FILE" ]] && return 0
+	local candidates line
+	candidates=$(grep -Ev '^[#\-=+/]' "$SERVER_NAME_FILE" 2>/dev/null | sed '/^[[:space:]]*$/d')
+	[[ -z "$candidates" ]] && return 0
+	if command -v shuf >/dev/null 2>&1; then
+		line=$(printf '%s\n' "$candidates" | shuf -n 1)
+	else
+		line=$(printf '%s\n' "$candidates" | head -1)
+	fi
+	# Format: NAME :: Role :: Intro
+	local name
+	name=$(printf '%s\n' "$line" | awk -F'::' '{gsub(/^[ \t]+|[ \t]+$/,"",$1); print $1}')
+	printf '%s' "$name"
+}
+
+change_server_name() {
+	clear
+	banner_info "             SERVER NAME               "
+	echo ""
+	local current
+	current=$(hostname 2>/dev/null || echo "unknown")
+	color_echo "Current server name: ${current}" "cyan"
+	local suggested
+	suggested=$(_suggest_server_name)
+	[[ -z "$suggested" ]] && suggested="$current"
+	echo ""
+	color_echo_n "Server name " "green"
+	color_echo_n "[${suggested}]: " "yellow"
+	read -r new_name
+	[[ -z "$new_name" ]] && new_name="$suggested"
+	if [[ -z "$new_name" ]]; then
+		msg_err "Server name cannot be empty."
+		sleep 2
+		return 1
+	fi
+
+	if command -v hostnamectl >/dev/null 2>&1; then
+		if hostnamectl set-hostname "$new_name" >/dev/null 2>&1; then
+			msg_ok "Server name set to $new_name"
+		else
+			msg_err "Failed to set server name. Run as root."
+		fi
+	else
+		echo "$new_name" >/etc/hostname 2>/dev/null || true
+		if hostname "$new_name" >/dev/null 2>&1; then
+			msg_ok "Server name set to $new_name"
+		else
+			msg_err "Failed to set server name. Run as root."
+		fi
+	fi
+	sleep 2
+}
+
+configure_privacy_logging() {
+	clear
+	banner_info "        PRIVACY & SESSION LOGS         "
+	echo ""
+	local current="enabled"
+	if [[ -f "$PRIVACY_CONF" ]]; then
+		# shellcheck disable=SC1090
+		. "$PRIVACY_CONF" 2>/dev/null || true
+	fi
+	if [[ "${LOG_IP_BANNER:-1}" -eq 0 ]]; then
+		current="disabled"
+	fi
+	color_echo "Current setting: logging IP & banner is ${current}" "cyan"
+	echo ""
+	color_echo_n "Log IP and banner for sessions? [Y/n]: " "yellow"
+	read -r ans
+	local new_val=1
+	if [[ "$ans" =~ ^[Nn]$ ]]; then
+		new_val=0
+	fi
+	mkdir -p /etc/SSHPlus 2>/dev/null || true
+	printf 'LOG_IP_BANNER=%s\n' "$new_val" > "$PRIVACY_CONF" 2>/dev/null || true
+	if [[ $new_val -eq 1 ]]; then
+		msg_ok "Session logs will include IP and client banner (where available)."
+	else
+		msg_ok "Session logs will hide IP and client banner for privacy."
+	fi
+	sleep 2
+}
+
+while true; do
+	clear
+	banner_info "             SERVER SETTINGS           "
+	echo ""
+	menu_option 1 "Change root password"
+	menu_option 2 "Datetime & timezone"
+	menu_option 3 "Keyboard layout"
+	menu_option 4 "Server name"
+	menu_option 5 "Privacy (IP & banner logging)"
+	menu_option 0 "Back"
+	menu_option 00 "Exit"
+	echo ""
+	color_echo_n "Select option [0/00]: " "green"
+	read -r opt
+	case "$opt" in
+		1) change_root_password ;;
+		2) change_timezone ;;
+		3) change_keyboard_layout ;;
+		4) change_server_name ;;
+		5) configure_privacy_logging ;;
+		0) exit 0 ;;
+		00) exit 99 ;;
+		*) msg_err "Invalid option!"; sleep 2 ;;
+	esac
+done
+

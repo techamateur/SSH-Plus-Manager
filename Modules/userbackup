@@ -10,32 +10,41 @@ elif [[ -f "$(dirname "$0")/colors" ]]; then
 	source "$(dirname "$0")/colors"
 fi
 
+# Load centralized DB + logging helpers
+if [[ -f /etc/SSHPlus/db ]]; then
+	source /etc/SSHPlus/db
+elif [[ -f /bin/db ]]; then
+	source /bin/db
+elif [[ -f "$(dirname "$0")/db" ]]; then
+	source "$(dirname "$0")/db"
+fi
+
 banner_info "            USER BACKUP                 "
 echo ""
 backup_dir="${HOME:-/root}"
 stamp=$(date +%Y%m%d_%H%M%S)
 out="${backup_dir}/sshplus_backup_${stamp}.txt"
-db="/root/users.db"
-pass_dir="/etc/SSHPlus/senha"
+db="$(sshplus_users_db_path 2>/dev/null || echo "${HOME:-/root}/users.db")"
+log="$(sshplus_sessions_log_path 2>/dev/null || echo "${HOME:-/root}/sessions.log")"
 
 {
 	echo "# SSHPlus user backup - $stamp"
-	echo "# Format: username:password:limit:expiration"
+	echo "# Centralized DB format (space-separated; 8 fields):"
+	echo "# username connection_limit expiration_date registration_date total_traffic last_connection_traffic latest_connection_date password"
 	echo ""
-	list_user=$(awk -F: '$3>=1000 {print $1}' /etc/passwd 2>/dev/null | grep -v nobody)
-	if [[ -z "$list_user" ]]; then
-		echo "# No users found."
-		exit 0
+	echo "## users.db"
+	if [[ -f "$db" ]] && [[ -s "$db" ]]; then
+		cat "$db"
+	else
+		echo "# (empty or missing) $db"
 	fi
-	while read -r u; do
-		[[ -z "$u" ]] && continue
-		pass="N/A" lim="1" exp="never"
-		[[ -f "${pass_dir}/${u}" ]] && pass=$(cat "${pass_dir}/${u}" 2>/dev/null)
-		[[ -f "$db" ]] && grep -q "^${u}[[:space:]]" "$db" 2>/dev/null && lim=$(grep -w "$u" "$db" 2>/dev/null | cut -d' ' -f2)
-		exp=$(chage -l "$u" 2>/dev/null | grep -E "Account expires" | cut -d' ' -f3-)
-		[[ -z "$exp" ]] && exp="never"
-		echo "${u}:${pass}:${lim}:${exp}"
-	done <<<"$list_user"
+	echo ""
+	echo "## sessions.log (last 500 lines)"
+	if [[ -f "$log" ]] && [[ -s "$log" ]]; then
+		tail -n 500 "$log" 2>/dev/null || cat "$log"
+	else
+		echo "# (empty or missing) $log"
+	fi
 } >"$out" 2>/dev/null
 
 if [[ -f "$out" ]] && [[ -s "$out" ]]; then

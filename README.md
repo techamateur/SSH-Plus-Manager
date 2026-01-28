@@ -15,11 +15,11 @@ A terminal-based manager for SSH users and network services on Linux servers. Cr
 | Feature | Description |
 |--------|-------------|
 | **Create user** | Add SSH users with password, expiration date, and connection limit. Supports OpenVPN (.ovpn) generation. |
-| **Remove user** | Remove one user or all users; cleans `/root/users.db`, SSHPlus password files, and OpenVPN certs. |
+| **Remove user** | Remove one user or all users; removes the user’s record from the centralized `$HOME/users.db` and cleans OpenVPN certs. |
 | **User info** | List all users with password, connection limit, and validity (days left or expired). |
-| **Change password** | Change a user’s password (stored in `/etc/SSHPlus/senha/` and shown in user info). |
+| **Change password** | Change a user’s password via the service (`chpasswd`) and keep `$HOME/users.db` in sync. |
 | **Change expiration** | Set or change account expiration date per user. |
-| **Change limit** | Set max simultaneous connections per user (stored in `/root/users.db`). |
+| **Change limit** | Set max simultaneous connections per user (stored in `$HOME/users.db`). |
 | **Expired users** | List accounts past expiration and remove them in one go. |
 
 ### Monitoring and traffic
@@ -134,9 +134,9 @@ SSH-Plus-Manager/
 Installed layout (after `install.sh` + `Install/list`):
 
 - Scripts in `/bin/` (e.g. `/bin/menu`, `/bin/createuser`).
-- `colors`, `open.py`, `proxy.py` in `/etc/SSHPlus/`.
-- User DB: `/root/users.db` (format: `username limit`).
-- Passwords: `/etc/SSHPlus/senha/<user>`.
+- `colors`, `db`, `open.py`, `proxy.py` in `/etc/SSHPlus/`.
+- User DB (single source of truth): `$HOME/users.db` (8 fields per user).
+- Session audit log (append-only): `$HOME/sessions.log`.
 
 ---
 
@@ -171,7 +171,7 @@ Contributions are welcome. Follow the conventions below so the project stays con
      `awk -v o="$option" -F: 'NF>=2 && $1+0==o+0 {print $2; exit}'` so that typing `1` or `01` both select the first user.
 
 4. **Paths**
-   - User DB: `/root/users.db`. Passwords: `/etc/SSHPlus/senha/<user>`. Version: `/etc/SSHPlus/version` or `/bin/version`.
+   - User DB: `$HOME/users.db`. Sessions: `$HOME/sessions.log`. Version: `/etc/SSHPlus/version` or `/bin/version`.
 
 5. **Exit codes**
    - `0` = back to menu, `99` = exit entirely (menu handles this and exits).

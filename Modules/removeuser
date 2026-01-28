@@ -9,6 +9,15 @@ elif [[ -f /bin/colors ]]; then
 elif [[ -f "$(dirname "$0")/colors" ]]; then
 	source "$(dirname "$0")/colors"
 fi
+
+# Load centralized DB + logging helpers
+if [[ -f /etc/SSHPlus/db ]]; then
+	source /etc/SSHPlus/db
+elif [[ -f /bin/db ]]; then
+	source /bin/db
+elif [[ -f "$(dirname "$0")/db" ]]; then
+	source "$(dirname "$0")/db"
+fi
 if [[ -z "${SSHPLUS_FROM_REPO:-}" ]]; then
 	_mod_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
 	_repo_root="$(cd "${_mod_dir}/.." 2>/dev/null && pwd)"
@@ -30,7 +39,6 @@ remove_ovp() {
 	[[ -e /var/www/html/openvpn/"${user}.zip" ]] && rm -f /var/www/html/openvpn/"${user}.zip" 2>/dev/null
 }
 [[ -z "${SSHPLUS_FROM_REPO:-}" ]] && [[ ! -e /usr/lib/sshplus ]] && rm -rf /bin/ > /dev/null 2>&1
-database="/root/users.db"
 clear
 banner_info "   Remove SSH User   "
 echo ""
@@ -109,46 +117,11 @@ else
 			exit 1
 		fi
 		msg_ok " User $user removed successfully! "
-		grep -v "^${user}[[:space:]]" "$database" > /tmp/ph && mv /tmp/ph "$database"
-		rm -f /etc/SSHPlus/senha/"$user" 2>/dev/null
+		sshplus_with_db_lock sshplus_db_remove_user "$user" >/dev/null 2>&1 || true
 		if [[ -e /etc/openvpn/server.conf ]]; then
 			remove_ovp "$user"
 		fi
 		exit 0
-	elif [[ "$(grep -cw "$user" "$database" 2>/dev/null)" -ne "0" ]]; then
-		ps x 2>/dev/null | grep -F "$user" | grep -v grep | grep -v pt > /tmp/rem
-		if [[ "$(grep -c "$user" /tmp/rem 2>/dev/null)" -eq 0 ]]; then
-			userdel -f "$user" 2>/dev/null || deluser --force "$user" 2>/dev/null
-			if getent passwd "$user" >/dev/null 2>&1; then
-				msg_err " Failed to remove user $user. Run as root. "
-				exit 1
-			fi
-			echo ""
-			msg_ok " User $user removed successfully! "
-			grep -v "^${user}[[:space:]]" "$database" > /tmp/ph && mv /tmp/ph "$database"
-			rm -f /etc/SSHPlus/senha/"$user" 2>/dev/null
-			if [[ -e /etc/openvpn/server.conf ]]; then
-				remove_ovp "$user"
-			fi
-			exit 0
-		else
-			echo ""
-			msg_info "User logged in. Disconnecting..."
-			pkill -f "$user" > /dev/null 2>&1
-			sleep 1
-			userdel -f "$user" 2>/dev/null || deluser --force "$user" 2>/dev/null
-			if getent passwd "$user" >/dev/null 2>&1; then
-				msg_err " Failed to remove user $user. Run as root. "
-				exit 1
-			fi
-			msg_ok " User $user successfully removed! "
-			grep -v "^${user}[[:space:]]" "$database" > /tmp/ph && mv /tmp/ph "$database"
-			rm -f /etc/SSHPlus/senha/"$user" 2>/dev/null
-			if [[ -e /etc/openvpn/server.conf ]]; then
-				remove_ovp "$user"
-			fi
-			exit 1
-		fi
 	else
 		echo ""
 		msg_err "The user $user does not exist!"
@@ -173,7 +146,7 @@ elif [[ "$resp" == "2" ]]; then
 				remove_ovp "$user"
 			fi
 		done
-		: > /root/users.db
+		sshplus_with_db_lock sshplus_db_clear >/dev/null 2>&1 || true
 		rm -f "$HOME"/*.zip >/dev/null 2>&1
 		echo ""
 		msg_ok "SUCCESSFULLY REMOVED USERS!"

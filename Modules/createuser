@@ -9,6 +9,15 @@ elif [[ -f /bin/colors ]]; then
 elif [[ -f "$(dirname "$0")/colors" ]]; then
 	source "$(dirname "$0")/colors"
 fi
+
+# Load centralized DB + logging helpers
+if [[ -f /etc/SSHPlus/db ]]; then
+	source /etc/SSHPlus/db
+elif [[ -f /bin/db ]]; then
+	source /bin/db
+elif [[ -f "$(dirname "$0")/db" ]]; then
+	source "$(dirname "$0")/db"
+fi
 if [[ -z "${SSHPLUS_FROM_REPO:-}" ]]; then
 	_mod_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
 	_repo_root="$(cd "${_mod_dir}/.." 2>/dev/null && pwd)"
@@ -26,6 +35,42 @@ else
 	[[ -n "$IP" ]] && echo "$IP" > /etc/IP 2>/dev/null
 	[[ -z "$IP" ]] && IP=""
 fi
+
+# Get SSH port (default 22, or first port from sshd_config)
+_get_ssh_port() {
+	local port
+	port=$(grep -E '^[[:space:]]*Port[[:space:]]+' /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' | head -1)
+	[[ -z "$port" ]] && port=22
+	echo "$port"
+}
+
+# Generate npvt-ssh:// import link
+_generate_npvt_link() {
+	local username="$1" password="$2" ssh_host="$3" ssh_port="${4:-22}"
+	[[ -z "$username" || -z "$password" || -z "$ssh_host" ]] && return 1
+
+	local hostname_short
+	hostname_short=$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo "server")
+	[[ -z "$hostname_short" ]] && hostname_short="server"
+	local remarks="${username}@${hostname_short}"
+
+	local json
+	json=$(cat <<EOF
+{"sshConfigType":"SSH-Direct","remarks":"${remarks}","sshHost":"${ssh_host}","sshPort":${ssh_port},"sshUsername":"${username}","sshPassword":"${password}","sni":"","tlsVersion":"DEFAULT","httpProxy":"","authenticateProxy":false,"proxyUsername":"","proxyPassword":"","payload":"","dnsTTMode":"UDP","dnsServer":"","nameserver":"","publicKey":"","udpgwPort":7300,"udpgwTransparentDNS":true}
+EOF
+)
+
+	local encoded
+	if command -v base64 >/dev/null 2>&1; then
+		encoded=$(printf "%s" "$json" | base64 -w 0 2>/dev/null || printf "%s" "$json" | base64 2>/dev/null | tr -d '\n')
+	elif command -v openssl >/dev/null 2>&1; then
+		encoded=$(printf "%s" "$json" | openssl base64 2>/dev/null | tr -d '\n')
+	else
+		return 1
+	fi
+
+	printf "npvt-ssh://%s" "$encoded"
+}
 # Legacy ANSI vars (prefer msg_err/banner_info from colors); remove if unused
 cor1='\033[41;1;37m'
 cor2='\033[44;1;37m'
@@ -411,10 +456,32 @@ read -r sshlimiter
 }
 final=$(date "+%Y-%m-%d" -d "+$dias days")
 gui=$(date "+%d/%m/%Y" -d "+$dias days")
-pass=$(perl -e 'print crypt($ARGV[0], "password")' $password)
-useradd -e $final -M -s /bin/false -p $pass $username >/dev/null 2>&1 &
-echo "$password" >/etc/SSHPlus/senha/$username
-echo "$username $sshlimiter" >>/root/users.db
+# Create system user, then set password through the service (no `passwd` usage)
+useradd -e "$final" -M -s /bin/false "$username" >/dev/null 2>&1 || {
+	echo ""
+	msg_err "Failed to create user $username"
+	echo ""
+	exit 1
+}
+if ! sshplus_set_system_password "$username" "$password"; then
+	# Keep DB/system consistent: if password set fails, delete the user and stop
+	userdel -f "$username" >/dev/null 2>&1 || true
+	echo ""
+	msg_err "Failed to set password for $username"
+	echo ""
+	exit 1
+fi
+
+# Record in centralized DB (single source of truth)
+sshplus_with_db_lock sshplus_db_put_user \
+	"$username" \
+	"$sshlimiter" \
+	"$final" \
+	"$(sshplus_now_date)" \
+	0 \
+	0 \
+	"never" \
+	"$(sshplus_hash_password "$password")" || true
 [[ -e /etc/openvpn/server.conf ]] && {
 	color_echo_n "Generate Ovpn File " "green"
 	color_echo_n "? " "red"
@@ -472,6 +539,14 @@ echo "$username $sshlimiter" >>/root/users.db
 		color_echo "$gui" "white"
 		color_echo_n "Connection limit: " "green"
 		color_echo "$sshlimiter" "white"
+		# Generate and display npvt-ssh:// import link
+		_ssh_port=$(_get_ssh_port)
+		_import_link=$(_generate_npvt_link "$username" "$password" "$IP" "$_ssh_port")
+		if [[ -n "$_import_link" ]]; then
+			echo ""
+			color_echo_n "Import link: " "green"
+			color_echo "$_import_link" "cyan"
+		fi
 		sleep 1
 		function aguarde() {
 			helice() {
@@ -536,6 +611,14 @@ echo "$username $sshlimiter" >>/root/users.db
 		color_echo "$gui" "white"
 		color_echo_n "Connection limit: " "green"
 		color_echo "$sshlimiter" "white"
+		# Generate and display npvt-ssh:// import link
+		_ssh_port=$(_get_ssh_port)
+		_import_link=$(_generate_npvt_link "$username" "$password" "$IP" "$_ssh_port")
+		if [[ -n "$_import_link" ]]; then
+			echo ""
+			color_echo_n "Import link: " "green"
+			color_echo "$_import_link" "cyan"
+		fi
 	}
 } || {
 	clear
@@ -564,4 +647,12 @@ echo "$username $sshlimiter" >>/root/users.db
 	color_echo "$gui" "white"
 	color_echo_n "Connection limit: " "green"
 	color_echo "$sshlimiter" "white"
+	# Generate and display npvt-ssh:// import link
+	_ssh_port=$(_get_ssh_port)
+	_import_link=$(_generate_npvt_link "$username" "$password" "$IP" "$_ssh_port")
+	if [[ -n "$_import_link" ]]; then
+		echo ""
+		color_echo_n "Import link: " "green"
+		color_echo "$_import_link" "cyan"
+	fi
 }

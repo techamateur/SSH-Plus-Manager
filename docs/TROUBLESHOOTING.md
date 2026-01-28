@@ -93,14 +93,12 @@ Same as above: the script reads `/etc/IP`. Populate it as in the previous sectio
 
 ### “Create user” or “Remove user” doesn’t show the user I expect
 
-- User lists are built from current accounts and `/root/users.db`. If you deleted a user at the system level (e.g. `userdel`), they may still appear in the manager until the list is refreshed or the corresponding line is removed from `users.db`.  
-  Restart the menu or re-open the relevant submenu; if your script version writes to `users.db` on delete, the removed user should disappear after you’ve used “Remove user” or the cleanup that updates `users.db`.
+- User lists are built from current system accounts and the centralized `$HOME/users.db`. If you deleted a user at the system level (e.g. `userdel`), they may still have a record in `$HOME/users.db` until the manager updates it (e.g. via “Remove user” / “Remove expired users”).
 
 ### Password or limit change doesn’t seem to apply
 
-- For **password**: the script uses `chpasswd`. Make sure you’re not looking at an old session; try logging in again in a new terminal.
-- For **connection limit**: limits are stored in `/root/users.db` and enforced by the manager logic. Restarting SSH or the manager doesn’t change that file; only the menu options that “alter limit” or “remove user” do.  
-  Confirm the line in `/root/users.db` for that user and that you’re using the same username (case-sensitive).
+- For **password**: the service uses `chpasswd` (non-interactive) and then updates `$HOME/users.db`. Make sure you’re not looking at an old session; try logging in again in a new terminal.
+- For **connection limit**: the limit is stored in `$HOME/users.db` (single source of truth) and applied by the manager logic.
 
 ---
 

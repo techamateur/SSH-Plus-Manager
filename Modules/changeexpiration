@@ -10,21 +10,20 @@ elif [[ -f "$(dirname "$0")/colors" ]]; then
 	source "$(dirname "$0")/colors"
 fi
 
+# Load centralized DB + logging helpers
+if [[ -f /etc/SSHPlus/db ]]; then
+	source /etc/SSHPlus/db
+elif [[ -f /bin/db ]]; then
+	source /bin/db
+elif [[ -f "$(dirname "$0")/db" ]]; then
+	source "$(dirname "$0")/db"
+fi
+
 banner_info "   Change expiration date   "
 echo ""
 color_echo " LIST OF USERS AND EXPIRY DATE:" "yellow"
 echo ""
 tput setaf 7 ; tput bold
-database="/root/users.db"
-# Keep users.db in sync: remove entries for users that no longer exist in /etc/passwd
-_existing=$(awk -F: '$3>=1000 {print $1}' /etc/passwd 2>/dev/null | grep -v nobody)
-_tmp=$(mktemp 2>/dev/null || echo /tmp/udat_$$)
-: > "$_tmp"
-while read -r u lim _ 2>/dev/null; do
-	echo "$_existing" | grep -qxF "$u" 2>/dev/null && echo "$u $lim" >> "$_tmp"
-done < "$database" 2>/dev/null
-[[ -s "$_tmp" ]] && mv "$_tmp" "$database" || true
-rm -f "$_tmp" 2>/dev/null
 # List only users that currently exist in /etc/passwd
 list_user=$(awk -F: '$3>=1000 {print $1}' /etc/passwd 2>/dev/null | grep -v nobody)
 idx=0
@@ -32,7 +31,14 @@ unset _userPass
 while read -r user; do
 	((idx++)) || true
 	[[ $idx -le 9 ]] && i=0$idx || i=$idx
-	expire=$(chage -l "$user" 2>/dev/null | grep -E "Account expires" | cut -d' ' -f3-)
+	# Expiration is managed by the service in $HOME/users.db
+	_line="$(sshplus_db_get_line "$user" 2>/dev/null || true)"
+	if [[ -z "${_line:-}" ]]; then
+		sshplus_with_db_lock sshplus_db_ensure_user "$user" >/dev/null 2>&1 || true
+		_line="$(sshplus_db_get_line "$user" 2>/dev/null || true)"
+	fi
+	expire="$(awk '{print $3}' <<<"${_line:-}" 2>/dev/null)"
+	[[ -z "${expire:-}" ]] && expire="never"
 	red_code=$(get_color_code "red")
 	cyan_code=$(get_color_code "cyan")
 	white_code=$(get_color_code "white")
@@ -166,6 +172,7 @@ else
 		exit 1
 	    fi
 	    chage -E "$sysdate" "$usuario"
+	    sshplus_with_db_lock sshplus_db_set_expiration "$usuario" "$sysdate" >/dev/null 2>&1 || true
 	    echo ""
 	    msg_ok "User Success $usuario new date: $udata"
 	    echo ""

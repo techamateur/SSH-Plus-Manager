@@ -10,6 +10,15 @@ elif [[ -f "$(dirname "$0")/colors" ]]; then
 	source "$(dirname "$0")/colors"
 fi
 
+# Load centralized DB + logging helpers
+if [[ -f /etc/SSHPlus/db ]]; then
+	source /etc/SSHPlus/db
+elif [[ -f /bin/db ]]; then
+	source /bin/db
+elif [[ -f "$(dirname "$0")/db" ]]; then
+	source "$(dirname "$0")/db"
+fi
+
 now_sec=$(date +%s)
 
 remove_ovp() {
@@ -40,10 +49,14 @@ echo ""
 # Use banner_info function for colored header
 banner_info " User          Date         Status         Action   "
 echo ""
-for user in $(awk -F: '{print $1}' /etc/passwd 2>/dev/null); do
-	expdate=$(chage -l "$user" 2>/dev/null | awk -F: '/Account expires/{print $2}' | xargs)
-	[[ -z "$expdate" ]] && continue
-	echo "$expdate" | grep -q never && continue
+for user in $(awk -F: '$3>=1000 {print $1}' /etc/passwd 2>/dev/null | grep -v nobody); do
+	_line="$(sshplus_db_get_line "$user" 2>/dev/null || true)"
+	if [[ -z "${_line:-}" ]]; then
+		sshplus_with_db_lock sshplus_db_ensure_user "$user" >/dev/null 2>&1 || true
+		_line="$(sshplus_db_get_line "$user" 2>/dev/null || true)"
+	fi
+	expdate="$(awk '{print $3}' <<<"${_line:-}" 2>/dev/null)"
+	[[ -z "$expdate" || "$expdate" == "never" ]] && continue
 	exp_fmt=$(date -d "$expdate" '+%d/%m/%Y' 2>/dev/null)
 	printf "%b%-15s%-17s%b" "$(get_color_code "yellow")" "$user" "$exp_fmt" "$(get_reset_code)"
 	expsec=$(date +%s --date="$expdate" 2>/dev/null)
@@ -55,12 +68,11 @@ for user in $(awk -F: '{print $1}' /etc/passwd 2>/dev/null); do
 	color_echo "EXPIRED   WAS REMOVED" "red"
 	pkill -f "$user" 2>/dev/null
 	userdel --force "$user" 2>/dev/null
-	[[ -f /root/users.db ]] && grep -v "^${user}[[:space:]]" /root/users.db > /tmp/ph && mv /tmp/ph /root/users.db
+	sshplus_with_db_lock sshplus_db_remove_user "$user" >/dev/null 2>&1 || true
 	if [[ -e /etc/openvpn/server.conf ]]; then
 		remove_ovp "$user"
 	fi
 done
-echo '0' > /etc/SSHPlus/Exp
 echo ""
 menu_option "0" "BACK TO MENU" "red" "yellow"
 menu_option "00" "EXIT" "red" "yellow"
