@@ -234,10 +234,10 @@ menu() {
 		_disk_used=$(df -h / | awk 'NR==2 {print $3}')
 		_disk_total=$(df -h / | awk 'NR==2 {print $2}')
 		_disk_percent=$(df -h / | awk 'NR==2 {print $5}')
-		# Used ports (listening)
-		_ports=$(ss -tuln 2>/dev/null | awk '/LISTEN/ {gsub(/.*:/,"",$5); print $5}' | sort -nu | tr '\n' ' ')
-		[[ -z "$_ports" ]] && _ports=$(netstat -tuln 2>/dev/null | awk '/LISTEN/ {gsub(/.*:/,"",$4); print $4}' | sort -nu | tr '\n' ' ')
-		[[ -z "$_ports" ]] && _ports="N/A"
+		# SSH port from sshd_config (not all listening ports)
+		_ssh_port=$(grep -E '^[[:space:]]*Port[[:space:]]+' /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
+		[[ -z "$_ssh_port" ]] && _ssh_port=22
+		_ports="$_ssh_port"
 
 		# Version check for update availability (fetch and persist if missing)
 		_ver_repo="${_ver_repo:-https://raw.githubusercontent.com/namnamir/SSH-Plus-Manager/main}"
@@ -329,7 +329,7 @@ menu() {
 		_left2="🌍 ${_ipv4}  |  ${_ipv6}"
 		_right2="⏳ ${_uptime_short}"
 		_info_row "$_left2" "$_right2"
-		# Row 3: ports | users (● active ● inactive)
+		# Row 3: SSH port | users (● active ● inactive)
 		_left3="🔌 ${_ports}"
 		_right3="👩🏻 ${_tuser}  ($(status_dot active) ${_onli} $(status_dot inactive) ${_n_offline})"
 		_info_row "$_left3" "$_right3"
