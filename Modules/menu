@@ -346,10 +346,10 @@ menu() {
 		menu_option 2 "Remove user"
 		menu_option_n 3 "Change password"
 		printf "             "
-		menu_option 4 "Set expiration"
+		menu_option 4 "Expiration manager"
 		menu_option_n 5 "Account limit"
 		printf "               "
-		menu_option 6 "Expired users"
+		menu_option 6 "Expiration manager"
 
 		section "MONITORING"
 		menu_option_n 7 "Monitor users"
@@ -389,9 +389,9 @@ menu() {
 		1 | 01) clear; createuser; _ret=$?; [[ $_ret -eq 99 ]] && exit 0 ;;
 		2 | 02) clear; removeuser; _ret=$?; [[ $_ret -eq 99 ]] && exit 0; sleep 3 ;;
 		3 | 03) clear; changepassword; _ret=$?; [[ $_ret -eq 99 ]] && exit 0; sleep 3 ;;
-		4 | 04) clear; changeexpiration; _ret=$?; [[ $_ret -eq 99 ]] && exit 0; sleep 3 ;;
+		4 | 04) clear; expirationmanager; _ret=$?; [[ $_ret -eq 99 ]] && exit 0; sleep 1 ;;
 		5 | 05) clear; changelimit; _ret=$?; [[ $_ret -eq 99 ]] && exit 0; sleep 3 ;;
-		6 | 06) clear; expiredusers; _ret=$?; [[ $_ret -eq 99 ]] && exit 0; ;;
+		6 | 06) clear; expirationmanager; _ret=$?; [[ $_ret -eq 99 ]] && exit 0; ;;
 		7 | 07) clear; sshmonitor ;;
 		8 | 08) clear; speedtest ;;
 		9 | 09) vpstraffic ;;
