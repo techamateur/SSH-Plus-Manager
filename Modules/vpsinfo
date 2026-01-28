@@ -12,15 +12,30 @@ elif [[ -f "$(dirname "$0")/colors" ]]; then
 	source "$(dirname "$0")/colors"
 fi
 
-banner_info "              VPS INFO                 "
-echo ""
+# Load DB helpers for users.db / sessions.log paths (best-effort)
+if [[ -f /etc/SSHPlus/db ]]; then
+	source /etc/SSHPlus/db
+elif [[ -f /bin/db ]]; then
+	source /bin/db
+elif [[ -f "$(dirname "$0")/db" ]]; then
+	source "$(dirname "$0")/db"
+fi
+
 g=$(get_color_code "green")
 w=$(get_color_code "white")
 bl=$(get_color_code "blue")
 reset=$(get_reset_code)
 
-# --- Gather system info (single run, no redundant commands) ---
+fmt_bytes_compact() {
+	awk -v b="${1:-0}" 'BEGIN{
+		if(b>=1073741824) printf "%.1fG", b/1073741824
+		else if(b>=1048576) printf "%.1fM", b/1048576
+		else if(b>=1024) printf "%.0fK", b/1024
+		else printf "%dB", b+0
+	}'
+}
 
+clear
 _hn=$(hostname 2>/dev/null || echo "N/A")
 if [[ -f /etc/IP ]] && [[ -s /etc/IP ]]; then
 	_ip4=$(cat /etc/IP)
@@ -57,26 +72,75 @@ if [[ -n "$_net_if" ]] && [[ -f /proc/net/dev ]]; then
 	[[ -n "$_rx_mb" ]] && [[ -n "$_tx_mb" ]] && _net_stats="↓${_rx_mb}MB ↑${_tx_mb}MB"
 fi
 [[ -z "$_net_stats" ]] && _net_stats="N/A"
-_ssh=$(ps -x 2>/dev/null | grep -c '[s]shd.*priv' || echo "0")
-_drop=$(ps aux 2>/dev/null | grep -c '[d]ropbear' || echo "0")
-_drop=$((_drop > 0 ? _drop - 1 : 0))
+_ssh=$(ps -x 2>/dev/null | grep -c '[s]shd.*priv' || true)
+_ssh=${_ssh//[!0-9]/}; [[ -z "$_ssh" ]] && _ssh=0
+_drop=$(ps aux 2>/dev/null | grep -c '[d]ropbear' || true)
+_drop=${_drop//[!0-9]/}; [[ -z "$_drop" ]] && _drop=0
+_drop=$(( _drop > 0 ? _drop - 1 : 0 ))
 _open="N/A"
-[[ -e /etc/openvpn/openvpn-status.log ]] && _open=$(grep -c "10.8.0" /etc/openvpn/openvpn-status.log 2>/dev/null || echo "0")
-_cons=$((_ssh + _drop))
-[[ "$_open" != "N/A" ]] && _cons=$((_cons + _open))
+_open_num=0
+if [[ -e /etc/openvpn/openvpn-status.log ]]; then
+	_open_num=$(grep -c "10.8.0" /etc/openvpn/openvpn-status.log 2>/dev/null || true)
+	_open_num=${_open_num//[!0-9]/}; [[ -z "$_open_num" ]] && _open_num=0
+	_open="$_open_num"
+fi
+_cons=$(( _ssh + _drop + _open_num ))
 
-echo -e "${bl}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset}"
-echo -e "  ${g}Hostname:${w}    $_hn${reset}"
+# --- SSH Plus Manager data (users.db, sessions.log, privacy) ---
+_user_db="N/A"; _user_count="0"; _exp_users="0"; _sess_log="N/A"; _sess_count="0"; _sess_bytes="0"; _sess_last="N/A"; _privacy="enabled"
+if type sshplus_users_db_path >/dev/null 2>&1; then
+	_user_db="$(sshplus_users_db_path)"
+	[[ -f "$_user_db" ]] && _user_count=$(wc -l < "$_user_db" 2>/dev/null || echo "0")
+	if [[ -f "$_user_db" ]] && [[ -s "$_user_db" ]]; then
+		now_ts=$(date +%s)
+		while read -r u lim exp reg tot last latest pass; do
+			[[ -z "$exp" || "$exp" == "never" ]] && continue
+			exp_ts=$(date -d "$exp" +%s 2>/dev/null) || continue
+			(( exp_ts <= now_ts )) && _exp_users=$(( _exp_users + 1 ))
+		done < "$_user_db"
+	fi
+fi
+if type sshplus_sessions_log_path >/dev/null 2>&1; then
+	_sess_log="$(sshplus_sessions_log_path)"
+	if [[ -f "$_sess_log" ]] && [[ -s "$_sess_log" ]]; then
+		_sess_count=$(wc -l < "$_sess_log" 2>/dev/null || echo "0")
+		_sess_bytes=$(awk '{s+=$7} END{printf "%.0f", s}' "$_sess_log" 2>/dev/null || echo "0")
+		_sess_last=$(tail -n1 "$_sess_log" 2>/dev/null | awk '{printf "%s %s (%s)", $1,$2,$4}')
+	fi
+fi
+if [[ -f /etc/SSHPlus/privacy.conf ]]; then
+	# shellcheck disable=SC1090
+	. /etc/SSHPlus/privacy.conf 2>/dev/null || true
+	[[ "${LOG_IP_BANNER:-1}" -eq 0 ]] && _privacy="disabled"
+fi
+
+header_line "VPS INFO" "$_hn"
+hr
+echo ""
+section "SYSTEM"
 echo -e "  ${g}IPv4:${w}        $_ip4${reset}"
 echo -e "  ${g}IPv6:${w}        $_ip6${reset}"
 echo -e "  ${g}OS:${w}          $_os${reset}"
 echo -e "  ${g}Kernel:${w}      $_kern${reset}"
 echo -e "  ${g}Uptime:${w}      $_up${reset}"
+echo ""
+section "RESOURCES"
 echo -e "  ${g}RAM:${w}         $_ram (${_ramuse} used)${reset}"
 echo -e "  ${g}CPU:${w}         $_cpu cores (${_cpuuse} used)${reset}"
 echo -e "  ${g}Disk (/):${w}    $_disk_used / $_disk_total (${_disk_pct})${reset}"
 echo -e "  ${g}Network:${w}     $_net_stats${reset}"
 echo -e "  ${g}Listening:${w}   $_ports${reset}"
-echo -e "${bl}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset}"
-echo -e "  ${g}Connections:${w} SSH/Dropbear: $_ssh / $_drop   OpenVPN: $_open   Total: $_cons${reset}"
-echo -e "${bl}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${reset}"
+echo ""
+section "CONNECTIONS"
+echo -e "  ${g}SSH/Dropbear:${w} $_ssh / $_drop${reset}"
+echo -e "  ${g}OpenVPN:${w}      $_open${reset}"
+echo -e "  ${g}Total:${w}        $_cons${reset}"
+echo ""
+section "SSH PLUS MANAGER"
+echo -e "  ${g}Users DB:${w}     ${_user_db}${reset}"
+echo -e "  ${g}Users:${w}        ${_user_count} total, ${_exp_users} expired${reset}"
+echo -e "  ${g}Sessions log:${w} ${_sess_log}${reset}"
+echo -e "  ${g}Sessions:${w}     ${_sess_count} entries, total ⇅ $(fmt_bytes_compact "${_sess_bytes}")${reset}"
+echo -e "  ${g}Last session:${w} ${_sess_last}${reset}"
+echo -e "  ${g}Privacy:${w}      IP/banner logging ${_privacy}${reset}"
+echo ""

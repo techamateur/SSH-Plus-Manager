@@ -318,7 +318,7 @@ menu() {
 
 		# Row 1: CPU / RAM / Disk % (colored by threshold) | sys traffic; left pad to 52 bytes
 		_left1_len=$(( 15 + ${#_cpu_pct} + ${#_ram_pct} + ${#_disk_pct} ))
-		_pad1=$(( 52 - _left1_len )); [[ $_pad1 -lt 1 ]] && _pad1=1
+		_pad1=$(( 50 - _left1_len )); [[ $_pad1 -lt 1 ]] && _pad1=1
 		_right1="📶 ${_sys_traffic_str}"
 		printf "%b🧠 %b%s%%%b  %b🧩 %b%s%%%b  %b💾 %b%s%%%b%*s%b%s%b\n" \
 			"$(c ui_value)" "$(_pct_style "$_cpu_pct")" "$_cpu_pct" "$(reset)" \
@@ -327,11 +327,11 @@ menu() {
 			"$_pad1" "" "$(c ui_value)" "$_right1" "$(reset)"
 		# Row 2: IP | uptime
 		_left2="🌍 ${_ipv4}  |  ${_ipv6}"
-		_right2="⏱ ${_uptime_short}"
+		_right2="⏳ ${_uptime_short}"
 		_info_row "$_left2" "$_right2"
 		# Row 3: ports | users (● active ● inactive)
-		_left3="🪝 ${_ports}"
-		_right3="👤 ${_tuser}  ($(status_dot active) ${_onli} $(status_dot inactive) ${_n_offline})"
+		_left3="🔌 ${_ports}"
+		_right3="👩🏻 ${_tuser}  ($(status_dot active) ${_onli} $(status_dot inactive) ${_n_offline})"
 		_info_row "$_left3" "$_right3"
 		echo ""
 
@@ -364,8 +364,8 @@ menu() {
 		printf "            "
 		menu_option 12 "Reboot system"
 		menu_option_n 13 "Server settings"
-		printf "               "
-		menu_option_n 14 "Remove script ⚠️"
+		printf "             "
+		menu_option 14 "Remove script ⚠️"
 
 		section "SETTINGS"
 		menu_option_n 15 "Connections"
@@ -374,9 +374,9 @@ menu() {
 		menu_option_n 17 "Backup"
 		printf "                      "
 		menu_option 18 "Autorun"
-		menu_option 19 "Update script"
+		menu_option_n 19 "Update script"
 
-		printf "                      "
+		echo ""
 		printf "%b[00/q/Q] Quit%b\n" "$(c ui_menu_num)" "$(reset)"
 		hr
 		echo ""

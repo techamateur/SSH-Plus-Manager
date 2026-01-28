@@ -128,7 +128,7 @@ change_keyboard_layout() {
 	sleep 2
 }
 
-_suggest_server_name() {
+_suggest_server_line() {
 	[[ ! -f "$SERVER_NAME_FILE" ]] && return 0
 	local candidates line
 	candidates=$(grep -Ev '^[#\-=+/]' "$SERVER_NAME_FILE" 2>/dev/null | sed '/^[[:space:]]*$/d')
@@ -138,10 +138,7 @@ _suggest_server_name() {
 	else
 		line=$(printf '%s\n' "$candidates" | head -1)
 	fi
-	# Format: NAME :: Role :: Intro
-	local name
-	name=$(printf '%s\n' "$line" | awk -F'::' '{gsub(/^[ \t]+|[ \t]+$/,"",$1); print $1}')
-	printf '%s' "$name"
+	printf '%s\n' "$line"
 }
 
 change_server_name() {
@@ -151,9 +148,24 @@ change_server_name() {
 	local current
 	current=$(hostname 2>/dev/null || echo "unknown")
 	color_echo "Current server name: ${current}" "cyan"
-	local suggested
-	suggested=$(_suggest_server_name)
-	[[ -z "$suggested" ]] && suggested="$current"
+	local suggested_line suggested role intro
+	suggested_line=$(_suggest_server_line)
+	if [[ -n "$suggested_line" ]]; then
+		# Format: NAME :: Role :: Intro
+		suggested=$(printf '%s\n' "$suggested_line" | awk -F'::' '{gsub(/^[ \t]+|[ \t]+$/,"",$1); print $1}')
+		role=$(printf '%s\n' "$suggested_line" | awk -F'::' '{gsub(/^[ \t]+|[ \t]+$/,"",$2); print $2}')
+		intro=$(printf '%s\n' "$suggested_line" | awk -F'::' '{gsub(/^[ \t]+|[ \t]+$/,"",$3); print $3}')
+	else
+		suggested="$current"
+	fi
+	if [[ -n "$role" ]]; then
+		color_echo "Suggested: ${suggested} — ${role}" "cyan"
+	else
+		color_echo "Suggested: ${suggested}" "cyan"
+	fi
+	if [[ -n "$intro" ]]; then
+		color_echo "  ${intro}" "white"
+	fi
 	echo ""
 	color_echo_n "Server name " "green"
 	color_echo_n "[${suggested}]: " "yellow"
@@ -163,6 +175,19 @@ change_server_name() {
 		msg_err "Server name cannot be empty."
 		sleep 2
 		return 1
+	fi
+
+	# Warn if chosen name already exists in SERVER_NAME list (first field, case-insensitive)
+	if [[ -f "$SERVER_NAME_FILE" ]]; then
+		if awk -F'::' -v n="$new_name" 'BEGIN{IGNORECASE=1; found=0}
+			{
+				gsub(/^[ \t]+|[ \t]+$/,"",$1);
+				if ($1 == n) { found=1; exit }
+			}
+			END{ exit found?0:1 }' "$SERVER_NAME_FILE"; then
+			msg_warn "The server name '${new_name}' already exists in SERVER_NAME list."
+			echo ""
+		fi
 	fi
 
 	if command -v hostnamectl >/dev/null 2>&1; then

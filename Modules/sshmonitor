@@ -240,6 +240,9 @@ MONITOR_SORT=1
 MONITOR_FILTER=1
 declare -A MONITOR_EXPANDED
 
+# Session logging state (per-user, for this sshmonitor run only)
+declare -A _S_ACTIVE _S_START_TS _S_START_ISO _S_BYTES_START
+
 # Sort labels for header
 _sort_label() {
 	case "${1:-1}" in
@@ -269,10 +272,49 @@ _sec_to_hms() {
 	}'
 }
 
+# -------------------- Session logging (writes sessions.log) --------------------
+_update_session_logs() {
+	# Requires: _U_LIST, _L_conn_count, _L_now_down, _L_now_up
+	# Uses sshplus_log_session from Modules/db if available.
+	type sshplus_log_session >/dev/null 2>&1 || return 0
+	local u now_count now_bytes start_ts end_ts delta_sec delta_hms bytes_sess
+	for u in "${_U_LIST[@]:-}"; do
+		[[ -z "$u" ]] && continue
+		now_count="${_L_conn_count[$u]:-0}"
+		now_bytes=$(( ${_L_now_down[$u]:-0} + ${_L_now_up[$u]:-0} ))
+
+		if [[ "$now_count" -gt 0 ]]; then
+			# Session active
+			if [[ -z "${_S_ACTIVE[$u]:-}" ]]; then
+				_S_ACTIVE["$u"]=1
+				_S_START_TS["$u"]=$(date +%s)
+				_S_START_ISO["$u"]=$(sshplus_now_iso)
+				_S_BYTES_START["$u"]="$now_bytes"
+			fi
+		else
+			# No active connections; if we had an active session, close and log it
+			if [[ -n "${_S_ACTIVE[$u]:-}" ]]; then
+				start_ts="${_S_START_TS[$u]:-0}"
+				[[ -z "$start_ts" ]] && start_ts=0
+				end_ts=$(date +%s)
+				delta_sec=$(( end_ts - start_ts ))
+				(( delta_sec < 0 )) && delta_sec=0
+				delta_hms=$(_sec_to_hms "$delta_sec")
+				bytes_sess=$(( now_bytes - ${_S_BYTES_START[$u]:-0} ))
+				(( bytes_sess < 0 )) && bytes_sess=0
+				# IP/banner may be unknown here; sshplus_log_session will apply privacy rules.
+				sshplus_log_session "${_S_START_ISO[$u]:-$(sshplus_now_iso)}" "$(sshplus_now_iso)" "$delta_hms" "$u" "unknown" "unknown" "$bytes_sess" >/dev/null 2>&1 || true
+				unset _S_ACTIVE["$u"] _S_START_TS["$u"] _S_START_ISO["$u"] _S_BYTES_START["$u"]
+			fi
+		fi
+	done
+}
+
 # -------------------- LIVE view --------------------
 print_user_monitor_screen() {
 	parse_users_db
 	get_live_connections
+	_update_session_logs
 
 	local total_users=${#_U_LIST[@]}
 	local n_active=0 n_idle=0 n_inactive=0 n_never=0
@@ -327,7 +369,7 @@ print_user_monitor_screen() {
 	# Group by status and print
 	local -A done
 	for st in active idle inactive never; do
-		local -a group
+		local -a group=()
 		for u in "${sorted_list[@]}"; do
 			[[ -n "${done[$u]:-}" ]] && continue
 			local now_count latest total
