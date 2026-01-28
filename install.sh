@@ -11,10 +11,18 @@
 #   --timezone TZ     Desired timezone (e.g. Asia/Tehran, used if --serversettings)
 #   --no-upgrade      Skip apt upgrade (only apt update + deps)
 
-set -euo pipefail
-
 _REPO_URL="https://raw.githubusercontent.com/namnamir/SSH-Plus-Manager/main"
-_SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
+_SCRIPT_DIR=""
+# Try to detect script directory (works when run from file, not from curl pipe)
+if [[ -n "${BASH_SOURCE[0]:-}" ]] && [[ "${BASH_SOURCE[0]}" != *"/dev/fd/"* ]]; then
+	_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || _SCRIPT_DIR=""
+fi
+if [[ -z "$_SCRIPT_DIR" ]] && [[ -n "${0:-}" ]] && [[ "$0" != *"/dev/fd/"* ]] && [[ "$0" != "bash" ]]; then
+	_SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || _SCRIPT_DIR=""
+fi
+
+# Ensure we can continue even if some early commands fail
+set +e
 
 INSTALL_VERSION=""
 if [[ -f "$_SCRIPT_DIR/version" ]]; then
@@ -63,7 +71,7 @@ if [[ -f "$_SCRIPT_DIR/Modules/colors" ]]; then
 	source "$_SCRIPT_DIR/Modules/colors"
 elif [[ -f /etc/SSHPlus/colors ]]; then
 	source /etc/SSHPlus/colors
-elif [[ -f /bin/colors" ]]; then
+elif [[ -f /bin/colors ]]; then
 	source /bin/colors
 else
 	_tmp_colors="/tmp/sshplus_colors_$$"
@@ -278,7 +286,7 @@ ask_yes_no() {
 	if [[ "$YES" -eq 1 ]]; then
 		[[ "$default" =~ ^[Yy]$ ]] && return 0 || return 1
 	fi
-	color_echo_n "$prompt " "yellow"
+	printf "%s" "$prompt "
 	read -r ans || ans=""
 	[[ -z "$ans" ]] && ans="$default"
 	[[ "$ans" =~ ^[Yy]$ ]] && return 0 || return 1
@@ -396,7 +404,7 @@ apply_serversettings() {
 # Main
 # -----------------------------------------------------------------------------
 main() {
-	cd "$HOME" || exit 1
+	cd "${HOME:-/root}" || cd / || true
 
 	title
 	print_preflight
@@ -485,4 +493,5 @@ main() {
 	history -c 2>/dev/null || true
 }
 
+# Main execution
 main "$@"
