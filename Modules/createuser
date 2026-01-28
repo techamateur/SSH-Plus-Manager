@@ -18,6 +18,8 @@ elif [[ -f /bin/db ]]; then
 elif [[ -f "$(dirname "$0")/db" ]]; then
 	source "$(dirname "$0")/db"
 fi
+# db sets "nounset" globally; disable it for interactive prompts here
+set +o nounset 2>/dev/null || true
 if [[ -z "${SSHPLUS_FROM_REPO:-}" ]]; then
 	_mod_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
 	_repo_root="$(cd "${_mod_dir}/.." 2>/dev/null && pwd)"
@@ -454,7 +456,7 @@ while true; do
 	# Defaults derived after username
 	_default_host="$(_detect_public_ipv4)"
 	_default_port="$(_get_ssh_port)"
-	_default_remark="${username}@${_hostname_short}"
+	_default_remark="${username}@$(_hostname_short)"
 	_default_days="98"
 	_default_limit="2"
 
