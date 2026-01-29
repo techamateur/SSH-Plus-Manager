@@ -13,13 +13,31 @@ fi
 banner_info "           UPDATE SCRIPT                "
 echo ""
 
-repo_url="https://raw.githubusercontent.com/techamateur/SSH-Plus-Manager/main"
+# Repository URL: from config, or from version file when run from repo
+repo_url=""
 [[ -f /etc/SSHPlus/repo_url ]] && [[ -s /etc/SSHPlus/repo_url ]] && repo_url=$(tr -d '\r\n' < /etc/SSHPlus/repo_url)
+if [[ -z "$repo_url" ]]; then
+	_upd_ver_file="$(cd "$(dirname "$0")" 2>/dev/null && cd .. 2>/dev/null && pwd)/version"
+	[[ -f "$_upd_ver_file" ]] && grep -q '^REPO_URL=' "$_upd_ver_file" 2>/dev/null && repo_url=$(grep '^REPO_URL=' "$_upd_ver_file" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r\n')
+fi
+if [[ -z "$repo_url" ]]; then
+	msg_err "Repository URL not configured. Set /etc/SSHPlus/repo_url or run from repo with version file."
+	sleep 3
+	exec /bin/menu
+	exit 0
+fi
 
+# Local version: from installed version file (version number only)
 local_ver=$(cat /etc/SSHPlus/version 2>/dev/null || cat /bin/version 2>/dev/null)
+local_ver="${local_ver//[[:space:]]/}"
 [[ -z "$local_ver" ]] && local_ver="0"
-remote_ver=$(wget -qO- --timeout=5 "$repo_url/version" 2>/dev/null | head -1 | tr -d '\r\n')
-[[ -z "$remote_ver" ]] && remote_ver=$(curl -sfL --max-time 5 "$repo_url/version" 2>/dev/null | head -1 | tr -d '\r\n')
+# Remote version: fetch version file and parse VERSION= or first line
+_rem_ver_raw=$(wget -qO- --timeout=5 "$repo_url/version" 2>/dev/null || curl -sfL --max-time 5 "$repo_url/version" 2>/dev/null)
+remote_ver=""
+if [[ -n "$_rem_ver_raw" ]]; then
+	remote_ver=$(echo "$_rem_ver_raw" | grep '^VERSION=' 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r\n')
+	[[ -z "$remote_ver" ]] && remote_ver=$(echo "$_rem_ver_raw" | head -1 | tr -d '\r\n' | grep -v '^#' | grep -v '^$')
+fi
 [[ -z "$remote_ver" ]] && remote_ver="$local_ver"
 
 need_update=""

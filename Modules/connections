@@ -1172,15 +1172,26 @@ fi
 			[[ -d /etc/openvpn/easy-rsa/ ]] && {
 				rm -rf /etc/openvpn/easy-rsa/
 			}
-			# Adquirindo easy-rsa
+			# Download EasyRSA (PKI for OpenVPN): try project repo, then upstream
 			echo ""
 			fun_dep() {
-				wget -O ~/EasyRSA-3.0.1.tgz "https://github.com/jenbhie/SSH-PLUS-MANAGER/raw/main/Install/EasyRSA-3.0.1.tgz"
-				tar xzf ~/EasyRSA-3.0.1.tgz -C ~/
-				mv ~/EasyRSA-3.0.1/ /etc/openvpn/
-				mv /etc/openvpn/EasyRSA-3.0.1/ /etc/openvpn/easy-rsa/
+				# Try project repo first (Install/EasyRSA-3.0.1.tgz), then official EasyRSA 3.0.8
+				_repo_base=""
+				[[ -f /etc/SSHPlus/repo_url ]] && [[ -s /etc/SSHPlus/repo_url ]] && _repo_base=$(tr -d '\r\n' < /etc/SSHPlus/repo_url)
+				if [[ -n "$_repo_base" ]] && { wget -q -O ~/EasyRSA-3.0.1.tgz "${_repo_base}/Install/EasyRSA-3.0.1.tgz" 2>/dev/null || curl -sfL "${_repo_base}/Install/EasyRSA-3.0.1.tgz" -o ~/EasyRSA-3.0.1.tgz 2>/dev/null; }; then
+					tar xzf ~/EasyRSA-3.0.1.tgz -C ~/ 2>/dev/null || true
+					[[ -d ~/EasyRSA-3.0.1 ]] && mv ~/EasyRSA-3.0.1 /etc/openvpn/ && mv /etc/openvpn/EasyRSA-3.0.1 /etc/openvpn/easy-rsa
+					rm -f ~/EasyRSA-3.0.1.tgz 2>/dev/null
+				else
+					# Fallback: official EasyRSA 3.0.8 (same 3.x API)
+					_official_url="https://github.com/OpenVPN/easy-rsa/releases/download/v3.0.8/EasyRSA-3.0.8.tgz"
+					wget -q -O ~/EasyRSA-3.0.8.tgz "$_official_url" 2>/dev/null || curl -sfL "$_official_url" -o ~/EasyRSA-3.0.8.tgz 2>/dev/null
+					tar xzf ~/EasyRSA-3.0.8.tgz -C ~/ 2>/dev/null || true
+					[[ -d ~/EasyRSA-3.0.8 ]] && mv ~/EasyRSA-3.0.8 /etc/openvpn/easy-rsa
+					rm -f ~/EasyRSA-3.0.8.tgz 2>/dev/null
+				fi
+				[[ ! -d /etc/openvpn/easy-rsa ]] && { echo "EasyRSA download failed." >&2; return 1; }
 				chown -R root:root /etc/openvpn/easy-rsa/
-				rm -rf ~/EasyRSA-3.0.1.tgz
 				cd /etc/openvpn/easy-rsa/
 				./easyrsa init-pki
 				./easyrsa --batch build-ca nopass

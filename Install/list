@@ -1,12 +1,16 @@
 #!/bin/bash
 # Install/list – bootstrap installer: fetches manager modules from repo, sets dirs, hosts, crontab, version.
 
-# Repository URL
-_REPO_URL="https://raw.githubusercontent.com/techamateur/SSH-Plus-Manager/main"
+# Repository URL: from config (set by install.sh before calling this script)
+_REPO_URL=""
+[[ -f /etc/SSHPlus/repo_url ]] && [[ -s /etc/SSHPlus/repo_url ]] && _REPO_URL=$(tr -d '\r\n' < /etc/SSHPlus/repo_url)
+[[ -z "$_REPO_URL" ]] && { echo "Repository URL not set (/etc/SSHPlus/repo_url). Run install.sh from repo." >&2; exit 1; }
 
-# Version: use repo root version (single source of truth)
-_lvk=$(wget -qO- --timeout=5 "$_REPO_URL/version" 2>/dev/null)
-[[ -z "$_lvk" ]] && _lvk=$(curl -sfL --max-time 5 "$_REPO_URL/version" 2>/dev/null)
+# Version: use repo root version file (parse VERSION= or first line)
+_lvk=""
+_lvk_raw=$(wget -qO- --timeout=5 "$_REPO_URL/version" 2>/dev/null || curl -sfL --max-time 5 "$_REPO_URL/version" 2>/dev/null)
+[[ -n "$_lvk_raw" ]] && _lvk=$(echo "$_lvk_raw" | grep '^VERSION=' 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r\n')
+[[ -z "$_lvk" ]] && [[ -n "$_lvk_raw" ]] && _lvk=$(echo "$_lvk_raw" | head -1 | tr -d '\r\n' | grep -v '^#' | grep -v '^$')
 IP=$(wget -qO- --timeout=5 ipv4.icanhazip.com 2>/dev/null)
 [[ -z "$IP" ]] && IP=$(curl -sfL --max-time 5 ipv4.icanhazip.com 2>/dev/null)
 IP2=$(wget -qO- --timeout=5 http://whatismyip.akamai.com/ 2>/dev/null)

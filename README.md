@@ -60,7 +60,7 @@ A terminal-based manager for SSH users and network services on Linux servers. Cr
 
 ## Installation
 
-Run **one** of these on your server as **root** (use the first if you have `curl`, the second if you have `wget`):
+Run **one** of these on your server as **root** (use the first if you have `curl`, the second if you have `wget`). The URL must match `REPO_URL` in the [version](version) file.
 
 ```bash
 # With curl:

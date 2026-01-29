@@ -1,1 +1,6 @@
-2.0.3
+# SSH Plus Manager – single source for version and repository (do not hardcode elsewhere)
+# Contributors: change only this file. Format: KEY=value (no spaces around =).
+# For curl-pipe install, keep the # REPO_URL= line in install.sh in sync with REPO_URL below.
+
+VERSION=2.0.4
+REPO_URL=https://raw.githubusercontent.com/techamateur/SSH-Plus-Manager/main

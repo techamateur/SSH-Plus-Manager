@@ -2,6 +2,7 @@
 
 # SSH Plus Manager – modern installer
 # -----------------------------------
+#
 # Flags:
 #   --yes, -y         Non-interactive, assume safe defaults
 #   --quiet, -q       Minimal output
@@ -11,10 +12,8 @@
 #   --timezone TZ     Desired timezone (e.g. Asia/Tehran, used if --serversettings)
 #   --no-upgrade      Skip apt upgrade (only apt update + deps)
 
-_REPO_URL="https://raw.githubusercontent.com/techamateur/SSH-Plus-Manager/main"
-_SCRIPT_DIR=""
 # Try to detect script directory (works when run from file, not from curl pipe)
-# When run via curl pipe, $0 is /dev/fd/63 or similar, so skip detection
+_SCRIPT_DIR=""
 if [[ -n "${BASH_SOURCE[0]:-}" ]] && [[ "${BASH_SOURCE[0]}" != *"/dev/fd/"* ]] && [[ -f "${BASH_SOURCE[0]}" ]]; then
 	_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || _SCRIPT_DIR=""
 fi
@@ -22,22 +21,47 @@ if [[ -z "$_SCRIPT_DIR" ]] && [[ -n "${0:-}" ]] && [[ "$0" != *"/dev/fd/"* ]] &&
 	_SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || _SCRIPT_DIR=""
 fi
 
-# Ensure we can continue even if some early commands fail
-set +e
-
+# Load version and repo URL from version file (single source of truth)
+_REPO_URL=""
 INSTALL_VERSION=""
-if [[ -f "$_SCRIPT_DIR/version" ]]; then
-	INSTALL_VERSION=$(head -1 "$_SCRIPT_DIR/version" 2>/dev/null | tr -d '\r\n')
-fi
-if [[ -z "$INSTALL_VERSION" ]]; then
-	# Prefer curl (always present when run via curl-pipe); fallback to wget
-	if command -v curl >/dev/null 2>&1; then
-		INSTALL_VERSION=$(curl -sfL --max-time 5 "$_REPO_URL/version" 2>/dev/null | head -1 | tr -d '\r\n')
+_parse_version_file() {
+	local f="${1:-}"
+	[[ -z "$f" ]] || [[ ! -f "$f" ]] && return 1
+	if grep -q '^VERSION=' "$f" 2>/dev/null; then
+		INSTALL_VERSION=$(grep '^VERSION=' "$f" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r\n')
 	else
-		INSTALL_VERSION=$(wget -qO- --timeout=5 "$_REPO_URL/version" 2>/dev/null | head -1 | tr -d '\r\n')
+		INSTALL_VERSION=$(head -1 "$f" 2>/dev/null | tr -d '\r\n')
+	fi
+	if grep -q '^REPO_URL=' "$f" 2>/dev/null; then
+		_REPO_URL=$(grep '^REPO_URL=' "$f" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r\n')
+	fi
+	[[ -n "$INSTALL_VERSION" ]] || [[ -n "$_REPO_URL" ]]
+}
+if [[ -f "$_SCRIPT_DIR/version" ]]; then
+	_parse_version_file "$_SCRIPT_DIR/version" || true
+fi
+# If no repo URL from file (e.g. curl-pipe run), use installed config
+if [[ -z "$_REPO_URL" ]] && [[ -f /etc/SSHPlus/repo_url ]]; then
+	_REPO_URL=$(tr -d '\r\n' < /etc/SSHPlus/repo_url 2>/dev/null)
+fi
+# Fetch version from repo if we have URL but no version yet
+if [[ -z "$INSTALL_VERSION" ]] && [[ -n "$_REPO_URL" ]]; then
+	if command -v curl >/dev/null 2>&1; then
+		INSTALL_VERSION=$(curl -sfL --max-time 5 "$_REPO_URL/version" 2>/dev/null | grep '^VERSION=' | head -1 | cut -d= -f2- | tr -d '\r\n')
+		[[ -z "$INSTALL_VERSION" ]] && INSTALL_VERSION=$(curl -sfL --max-time 5 "$_REPO_URL/version" 2>/dev/null | head -1 | tr -d '\r\n')
+	elif command -v wget >/dev/null 2>&1; then
+		INSTALL_VERSION=$(wget -qO- --timeout=5 "$_REPO_URL/version" 2>/dev/null | grep '^VERSION=' | head -1 | cut -d= -f2- | tr -d '\r\n')
+		[[ -z "$INSTALL_VERSION" ]] && INSTALL_VERSION=$(wget -qO- --timeout=5 "$_REPO_URL/version" 2>/dev/null | head -1 | tr -d '\r\n')
 	fi
 fi
 [[ -z "$INSTALL_VERSION" ]] && INSTALL_VERSION="?"
+# Fallback when run via curl-pipe (no local version file): parse REPO_URL from comment at top of this script
+if [[ -z "$_REPO_URL" ]] && [[ -f "${BASH_SOURCE[0]:-$0}" ]]; then
+	_REPO_URL=$(grep -m1 '^# REPO_URL=' "${BASH_SOURCE[0]:-$0}" 2>/dev/null | cut -d= -f2- | tr -d '\r\n')
+fi
+
+# Ensure we can continue even if some early commands fail
+set +e
 
 # -----------------------------------------------------------------------------
 # Flags and arguments
@@ -402,25 +426,33 @@ initialize_db() {
 }
 
 update_version_files() {
-	local tmp="/tmp/sshplus_version_$$" val=""
-	# Prefer curl (same as installer invocation)
+	local tmp="/tmp/sshplus_version_$$" val="" repo_val=""
+	[[ -z "$_REPO_URL" ]] && return 0
+	# Fetch full version file and parse VERSION= and REPO_URL=
 	if command -v curl >/dev/null 2>&1; then
-		curl -sfL --max-time 5 "$_REPO_URL/version" 2>/dev/null | head -1 | tr -d '\r\n' >"$tmp" || true
-		[[ -s "$tmp" ]] && val=$(cat "$tmp")
+		curl -sfL --max-time 5 "$_REPO_URL/version" 2>/dev/null >"$tmp" || true
+	elif command -v wget >/dev/null 2>&1; then
+		wget -qO- --timeout=5 "$_REPO_URL/version" 2>/dev/null >"$tmp" || true
 	fi
-	if [[ -z "$val" ]] && command -v wget >/dev/null 2>&1; then
-		wget -qO- --timeout=5 "$_REPO_URL/version" 2>/dev/null | head -1 | tr -d '\r\n' >"$tmp" || true
-		[[ -s "$tmp" ]] && val=$(cat "$tmp")
+	if [[ -s "$tmp" ]]; then
+		if grep -q '^VERSION=' "$tmp" 2>/dev/null; then
+			val=$(grep '^VERSION=' "$tmp" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r\n')
+		else
+			val=$(head -1 "$tmp" 2>/dev/null | tr -d '\r\n')
+		fi
+		grep -q '^REPO_URL=' "$tmp" 2>/dev/null && repo_val=$(grep '^REPO_URL=' "$tmp" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r\n')
 	fi
 	rm -f "$tmp" 2>/dev/null || true
+	mkdir -p /etc/SSHPlus 2>/dev/null || true
 	if [[ -n "$val" ]]; then
-		mkdir -p /etc/SSHPlus 2>/dev/null || true
 		printf "%s\n" "$val" >/etc/SSHPlus/version 2>/dev/null || true
 		printf "%s\n" "$val" >/bin/version 2>/dev/null || true
 		step_ok "Version file set to v${val}"
-	else
-		step_warn "Could not fetch remote version; update checks may be limited."
 	fi
+	if [[ -n "$repo_val" ]]; then
+		printf "%s\n" "$repo_val" >/etc/SSHPlus/repo_url 2>/dev/null || true
+	fi
+	[[ -z "$val" ]] && step_warn "Could not fetch remote version; update checks may be limited."
 }
 
 setup_launcher() {
@@ -503,6 +535,9 @@ main() {
 	# Dependencies
 	check_deps "${DEPS_INSTALLER[@]}" "${DEPS_RUNTIME[@]}" "${DEPS_SERVER_SETTINGS[@]}"
 	install_deps
+
+	# Write repo URL early so Install/list can use it (no hardcoded URL there)
+	[[ -n "$_REPO_URL" ]] && { mkdir -p /etc/SSHPlus 2>/dev/null || true; printf '%s\n' "$_REPO_URL" >/etc/SSHPlus/repo_url 2>/dev/null || true; }
 
 	# Download core installer payload
 	download_install_list

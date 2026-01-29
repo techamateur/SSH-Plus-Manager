@@ -256,14 +256,26 @@ menu() {
 		_ports="$_ssh_port"
 
 		# Version check for update availability (fetch and persist if missing)
-		_ver_repo="${_ver_repo:-https://raw.githubusercontent.com/techamateur/SSH-Plus-Manager/main}"
+		_ver_repo=""
 		[[ -f /etc/SSHPlus/repo_url ]] && [[ -s /etc/SSHPlus/repo_url ]] && _ver_repo=$(tr -d '\r\n' < /etc/SSHPlus/repo_url)
+		if [[ -z "$_ver_repo" ]]; then
+			_menu_ver_file="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && cd .. 2>/dev/null && pwd)/version"
+			[[ -f "$_menu_ver_file" ]] && grep -q '^REPO_URL=' "$_menu_ver_file" 2>/dev/null && _ver_repo=$(grep '^REPO_URL=' "$_menu_ver_file" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r\n')
+		fi
+		# Local version: installed version file (version number only)
 		_ver_local=$(cat /etc/SSHPlus/version 2>/dev/null || cat /bin/version 2>/dev/null)
 		_ver_local="${_ver_local:-0}"
+		_parse_ver() {
+			local raw="$1"
+			local v=""
+			[[ -n "$raw" ]] && v=$(echo "$raw" | grep '^VERSION=' 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r\n')
+			[[ -z "$v" ]] && [[ -n "$raw" ]] && v=$(echo "$raw" | head -1 | tr -d '\r\n' | grep -v '^#' | grep -v '^$')
+			echo "$v"
+		}
 		if [[ -z "$_ver_local" ]] || [[ "$_ver_local" == "0" ]]; then
 			ensure_fetch_deps
-			_ver_fetched=$(wget -qO- --timeout=5 "$_ver_repo/version" 2>/dev/null | head -1 | tr -d '\r\n')
-			[[ -z "$_ver_fetched" ]] && _ver_fetched=$(curl -sfL --max-time 5 "$_ver_repo/version" 2>/dev/null | head -1 | tr -d '\r\n')
+			_ver_raw=$(wget -qO- --timeout=5 "$_ver_repo/version" 2>/dev/null || curl -sfL --max-time 5 "$_ver_repo/version" 2>/dev/null)
+			_ver_fetched=$(_parse_ver "$_ver_raw")
 			if [[ -n "$_ver_fetched" ]]; then
 				mkdir -p /etc/SSHPlus
 				echo "$_ver_fetched" > /etc/SSHPlus/version 2>/dev/null
@@ -272,8 +284,8 @@ menu() {
 			fi
 		fi
 		[[ -z "$_ver_local" ]] && _ver_local="0"
-		_ver_remote=$(wget -qO- --timeout=3 "$_ver_repo/version" 2>/dev/null | head -1 | tr -d '\r\n')
-		[[ -z "$_ver_remote" ]] && _ver_remote=$(curl -sfL --max-time 3 "$_ver_repo/version" 2>/dev/null | head -1 | tr -d '\r\n')
+		_ver_remote_raw=$(wget -qO- --timeout=3 "$_ver_repo/version" 2>/dev/null || curl -sfL --max-time 3 "$_ver_repo/version" 2>/dev/null)
+		_ver_remote=$(_parse_ver "$_ver_remote_raw")
 		[[ -z "$_ver_remote" ]] && _ver_remote="$_ver_local"
 		_ver_update=""
 		if [[ -n "$_ver_remote" ]] && [[ "$_ver_local" != "$_ver_remote" ]]; then
